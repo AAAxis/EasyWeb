@@ -7,6 +7,40 @@ import { Footer, Mark, TopBar } from "./Chrome";
 // arriving here is either signing in or deciding whether to, and splitting
 // those across two URLs serves neither.
 
+// Apple's and Google's own badges, served from this origin rather than hot-
+// linked, and unaltered — both companies' guidelines require the artwork as
+// supplied. Google's asset carries its own padding, which is why the two
+// heights differ and the negative margin pulls it back into line.
+export function StoreBadges({ compact = false }) {
+  const h = compact ? 38 : 48;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <a
+        href="https://apps.apple.com/us/app/roamjet-2number/id6756972555"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Download on the App Store"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/badges/app-store.svg" alt="Download on the App Store" style={{ height: h, display: "block" }} />
+      </a>
+      <a
+        href="https://play.google.com/store/apps/details?id=com.theholylabs.easycall"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Get it on Google Play"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/badges/google-play.png"
+          alt="Get it on Google Play"
+          style={{ height: h * 1.46, display: "block", margin: `${-h * 0.23}px -${h * 0.2}px` }}
+        />
+      </a>
+    </div>
+  );
+}
+
 const FEATURES = [
   {
     title: "A number that is yours",
@@ -56,8 +90,9 @@ export default function Landing({ onSignIn }) {
               conversation stays together — on the iPhone app, and here.
             </p>
 
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <a className="btn btn-tint" href="#signin">Sign in</a>
+            <StoreBadges />
+
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 22 }}>
               <a className="btn" style={{ background: "var(--wash)", color: "var(--ink)" }} href="/about">
                 What it does
               </a>
@@ -97,9 +132,12 @@ export default function Landing({ onSignIn }) {
           On the phone, and on the web.
         </h2>
         <p style={{ fontSize: 17, margin: "18px auto 0", maxWidth: 560 }}>
-          The iPhone app makes the calls. This dashboard keeps the history, the
+          The app makes the calls. This dashboard keeps the history, the
           recordings, the texts and the numbers — the same account, either end.
         </p>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 26 }}>
+          <StoreBadges />
+        </div>
       </section>
 
       <Footer />
