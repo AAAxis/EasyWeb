@@ -90,7 +90,7 @@ export function SignIn({ onSignIn }) {
   };
 
   return (
-    <div style={{ maxWidth: 360, margin: "12vh auto 0", padding: "0 20px" }}>
+    <div style={{ width: "100%", maxWidth: 380, justifySelf: "center" }}>
       <div style={{ fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>EasyCall</div>
       <div style={{ fontSize: 14, color: C.muted, margin: "6px 0 22px" }}>
         Your calls, texts and recordings.

@@ -9,6 +9,7 @@ import Calls from "./dashboard/screens/Calls";
 import Sms from "./dashboard/screens/Sms";
 import Recordings from "./dashboard/screens/Recordings";
 import Integrations from "./dashboard/screens/Integrations";
+import Landing from "./components/Landing";
 
 const TABS = [
   ["overview", "Dashboard", Overview],
@@ -28,7 +29,9 @@ export default function Dashboard() {
   const onError = useCallback((message) => setError(message), []);
 
   if (!ready) return <div style={{ padding: 40 }}><Skeleton rows={3} /></div>;
-  if (!token) return <SignIn onSignIn={signIn} />;
+  // Signed out, the page says what this is and takes you in — both at once,
+  // side by side, rather than making the pitch a separate page.
+  if (!token) return <Landing onSignIn={signIn} />;
 
   const Screen = (TABS.find(([key]) => key === tab) ?? TABS[0])[2];
 
