@@ -1,8 +1,7 @@
 "use client";
 
-// /phone kept its address — links and bookmarks point at it — but it is no
-// longer a tab of its own: it lands on the same screen, where the keypad now
-// lives beside the numbers.
+// /dashboard is the same screen as /, because that is what people type. The
+// tab it lights up is the Dashboard tab, not a sixth one.
 import Dashboard from "../components/Dashboard";
 import Console from "../components/Console";
 

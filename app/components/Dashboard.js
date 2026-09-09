@@ -9,8 +9,8 @@ import { Mark } from "./Chrome";
 import Landing from "./Landing";
 
 export const TABS = [
+  // No Phone tab: the keypad is on the Dashboard, next to the numbers.
   ["/", "Dashboard"],
-  ["/phone", "Phone"],
   ["/calls", "Calls"],
   ["/sms", "SMS"],
   ["/recordings", "Recordings"],
