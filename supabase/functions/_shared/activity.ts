@@ -52,6 +52,15 @@ export const calls = {
     const values = pick(input, CALL_FIELDS);
     if (!values.direction) values.direction = "outbound";
 
+    // The number the other end sees. Twilio's own view of it only arrives with
+    // a webhook, and a webhook only arrives for a call that got far enough to
+    // report — so waiting for one leaves the From column empty on exactly the
+    // calls that went wrong.
+    if (!values.from_number && values.direction === "outbound") {
+      const { numbers } = await import("./repository.ts");
+      values.from_number = await numbers.primaryFor(orgId);
+    }
+
     if (!values.contact_id) {
       const other = values.direction === "inbound" ? values.from_number : values.to_number;
       if (other) {
@@ -71,8 +80,14 @@ export const calls = {
   /**
    * Reconciles a call the app placed but only Twilio can finish. The sid is
    * the only handle the client has at that point.
+   *
+   * The row is written optimistically the moment the user dials — before a sid
+   * exists — and nothing ever went back to stamp one on. So matching on the sid
+   * alone found nothing, every reconcile 404ed, and every call sat at
+   * `in_progress` with no duration and no caller id forever. When no row claims
+   * the sid, the call this person still has open adopts it.
    */
-  async updateBySid(orgId: number, sid: string, patch: Record<string, unknown>) {
+  async updateBySid(orgId: number, sid: string, patch: Record<string, unknown>, userId?: string) {
     const values = pick(patch, ["status", "duration_seconds", "outcome", "notes", "recording_url", "ended_at"]);
     if (Object.keys(values).length === 0) {
       const rows = await sql`
@@ -84,11 +99,31 @@ export const calls = {
        where org_id = ${orgId} and provider_call_sid = ${sid}
       returning *
     `;
-    return one(rows, "Call");
+    if (rows.length > 0) return rows[0];
+
+    // Scoped to the caller, to rows carrying no sid of their own, and to the
+    // last few hours — so adopting can never take a call that already belongs
+    // to a different one.
+    const mine = userId ? sql`and user_id = ${userId}` : sql`and true`;
+    const adopted = await sql`
+      update app_private.calls set ${sql({ ...values, provider_call_sid: sid })}
+       where id = (
+         select id from app_private.calls
+          where org_id = ${orgId}
+            and provider_call_sid is null
+            and status = 'in_progress'
+            ${mine}
+            and started_at > now() - interval '6 hours'
+          order by id desc
+          limit 1
+       )
+      returning *
+    `;
+    return one(adopted, "Call");
   },
 
   async update(orgId: number, id: number, patch: Record<string, unknown>) {
-    const values = pick(patch, ["status", "duration_seconds", "outcome", "notes", "recording_url", "ended_at", "contact_id", "deal_id"]);
+    const values = pick(patch, ["status", "duration_seconds", "outcome", "notes", "recording_url", "ended_at", "contact_id", "deal_id", "provider_call_sid"]);
     if (Object.keys(values).length === 0) {
       const rows = await sql`select * from app_private.calls where org_id = ${orgId} and id = ${id}`;
       return one(rows, "Call");

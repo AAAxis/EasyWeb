@@ -172,10 +172,24 @@ Deno.serve(async (req) => {
           ? ` url="${esc(publicUrl("announce"))}"`
           : "";
 
+        // The far leg reports its own outcome.
+        //
+        // `action` alone was not enough: Twilio requests it when the <Dial>
+        // finishes, and a caller who gives up before anyone picks up does not
+        // finish a dial — the call simply ends and no request is ever made. So
+        // the row stayed in_progress, with no duration and no caller id, for
+        // every call that was not answered. This callback always arrives once
+        // the other leg exists. The parent's sid rides in the query string —
+        // part of what Twilio signs — so both callbacks name the same call and
+        // the second to land updates the row instead of logging it twice.
+        const report =
+          ` statusCallback="${esc(publicUrl("status", `?call=${params.CallSid ?? ""}${orgId ? `&org=${orgId}` : ""}`))}"` +
+          ` statusCallbackEvent="completed" statusCallbackMethod="POST"`;
+
         return xml(
           `<Response><Dial callerId="${esc(from)}" answerOnBridge="true" ` +
             `action="${esc(publicUrl("status"))}" method="POST"${recordAttributes(policy)}>` +
-            `<Number${announce}>${esc(to)}</Number></Dial></Response>`,
+            `<Number${announce}${report}>${esc(to)}</Number></Dial></Response>`,
         );
       }
 
@@ -270,11 +284,20 @@ Deno.serve(async (req) => {
       // Status callback: log the finished call against the org and, when we can
       // match the number, against the contact.
       case "status": {
-        const sid = params.CallSid;
+        // Two callbacks land here: the <Dial> action, which describes the dial
+        // from the parent call's side, and the far leg's own status callback.
+        // Both settle on the parent sid — the action callback carries it as
+        // CallSid, the leg carries it in the signed query — so the row is the
+        // same row either way.
+        const sid = url.searchParams.get("call") || params.CallSid;
+        const orgInUrl = Number(url.searchParams.get("org") ?? 0) || null;
         const to = params.To ?? "";
         const from = params.From ?? "";
-        const duration = Number(params.CallDuration ?? params.DialCallDuration ?? 0);
-        const status = (params.CallStatus ?? params.DialCallStatus ?? "completed").toLowerCase();
+        // Dial* describes the leg that was dialled; on the action callback the
+        // bare CallStatus is the parent's own state — "in-progress", which is
+        // not an outcome — so the dial's view wins where it exists.
+        const duration = Number(params.DialCallDuration ?? params.CallDuration ?? 0);
+        const status = (params.DialCallStatus ?? params.CallStatus ?? "completed").toLowerCase();
 
         // Who this call belongs to.
         //
@@ -288,6 +311,14 @@ Deno.serve(async (req) => {
           ? await sql`
               select org_id, user_id from app_private.org_members
                where user_id = ${uid} limit 1
+            `
+          // The far leg's callback names the workspace in the signed URL, which
+          // holds even when the caller id was the platform's number rather than
+          // one of the workspace's own.
+          : orgInUrl
+          ? await sql`
+              select org_id, user_id from app_private.phone_numbers
+               where org_id = ${orgInUrl} order by is_primary desc, id limit 1
             `
           : await sql`
               select pn.org_id, pn.user_id from app_private.phone_numbers pn
@@ -314,22 +345,29 @@ Deno.serve(async (req) => {
 
           // The app writes a row the moment it dials, so the call shows up
           // before it connects. This is that row growing up — the same call,
-          // finished — rather than a second one beside it.
+          // finished — rather than a second one beside it. Keyed on the sid
+          // first: once a row carries it, a repeat callback (or the second of
+          // the two) refines that row instead of logging the call twice.
           const [reconciled] = await sql`
             update app_private.calls
                set status = ${settled},
                    duration_seconds = ${seconds},
                    ended_at = now(),
-                   provider_call_sid = coalesce(provider_call_sid, ${sid}),
+                   provider_call_sid = ${sid},
                    from_number = coalesce(from_number, ${shown}),
                    contact_id = coalesce(contact_id, ${match?.id ?? null})
              where id = (
                select id from app_private.calls
                 where org_id = ${orgId}
-                  and status = 'in_progress'
-                  and to_number = ${to}
-                  and started_at > now() - interval '6 hours'
-                order by id desc limit 1
+                  and (
+                    provider_call_sid = ${sid}
+                    or (provider_call_sid is null
+                        and status = 'in_progress'
+                        and to_number = ${to}
+                        and started_at > now() - interval '6 hours')
+                  )
+                order by (provider_call_sid = ${sid}) desc nulls last, id desc
+                limit 1
              )
             returning id`;
 

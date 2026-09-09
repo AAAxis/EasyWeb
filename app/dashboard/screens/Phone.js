@@ -25,6 +25,8 @@ export default function Phone({ api, onError }) {
   const [note, setNote] = useState(null);
   const device = useRef(null);
   const call = useRef(null);
+  const logged = useRef(null);   // the row this call is being written to
+  const startedAt = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -60,12 +62,41 @@ export default function Phone({ api, onError }) {
     return () => clearInterval(t);
   }, [state]);
 
+  /**
+   * Closes the row the dial opened.
+   *
+   * Twilio's callback is the authoritative account of a call and will refine
+   * this — but it only exists once the far leg does, and a call abandoned while
+   * it rings never produces one. Without this, those rows sat at `in_progress`
+   * with no duration for good. The sid is sent along so the callback, when
+   * there is one, lands on this row rather than beside it.
+   */
+  const finish = async (status, c) => {
+    const pending = logged.current;
+    logged.current = null;
+    if (!pending) return;                      // an incoming call: nothing of ours to close
+    const id = await pending;
+    if (!id) return;
+    const seconds = startedAt.current ? Math.round((Date.now() - startedAt.current) / 1000) : 0;
+    startedAt.current = null;
+    await api(`/calls/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status,
+        duration_seconds: seconds,
+        ended_at: new Date().toISOString(),
+        provider_call_sid: c?.parameters?.CallSid ?? undefined,
+      }),
+    }).catch(() => {});
+  };
+
   const attach = (c) => {
     call.current = c;
-    c.on("accept", () => setState("on"));
-    c.on("disconnect", () => { setState("ready"); call.current = null; setMuted(false); });
-    c.on("cancel", () => { setState("ready"); call.current = null; });
-    c.on("reject", () => { setState("ready"); call.current = null; });
+    c.on("accept", () => { startedAt.current = Date.now(); setState("on"); });
+    c.on("disconnect", () => { setState("ready"); call.current = null; setMuted(false); finish("completed", c); });
+    c.on("cancel", () => { setState("ready"); call.current = null; finish("no_answer", c); });
+    c.on("reject", () => { setState("ready"); call.current = null; finish("no_answer", c); });
+    c.on("error", () => { setState("ready"); call.current = null; finish("failed", c); });
   };
 
   const dial = async () => {
@@ -75,12 +106,17 @@ export default function Phone({ api, onError }) {
     setNote(null);
     try {
       // The row exists from the moment it is dialled, the same as the app does
-      // it; Twilio's status callback finishes it with the duration.
-      api("/calls", { method: "POST", body: JSON.stringify({ direction: "outbound", to_number: to, status: "in_progress" }) })
-        .catch(() => {});
+      // it. Its id is kept so that hanging up can close it, whatever Twilio
+      // does or does not report afterwards.
+      logged.current = api("/calls", {
+        method: "POST",
+        body: JSON.stringify({ direction: "outbound", to_number: to, status: "in_progress" }),
+      }).then((b) => b.call?.id ?? null).catch(() => null);
+      startedAt.current = null;
       attach(await device.current.connect({ params: { To: to } }));
     } catch (e) {
       setState("ready");
+      await finish("failed", null);
       onError(e?.message ?? "The call could not be placed.");
     }
   };

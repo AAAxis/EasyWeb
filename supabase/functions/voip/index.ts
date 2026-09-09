@@ -32,6 +32,7 @@ import {
 import { calls, conversations, recordings } from "../_shared/activity.ts";
 import { playbackUrl, recordingConfigured, removeObject } from "../_shared/providers/recordings.ts";
 import { voiceProvider } from "../_shared/providers/voice.ts";
+import * as didlogic from "../_shared/providers/didlogic.ts";
 import { broadcast, broadcastToOrg } from "../_shared/realtime.ts";
 import { sql } from "../_shared/db.ts";
 
@@ -80,7 +81,7 @@ router.add("POST /calls", async ({ req }) => {
 router.add("PATCH /calls/by-sid/:sid", async ({ req, params }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
-  return json({ call: await calls.updateBySid(ctx.orgId, params.sid, await readJson(req)) });
+  return json({ call: await calls.updateBySid(ctx.orgId, params.sid, await readJson(req), actor.uid) });
 });
 
 router.add("PATCH /calls/:id", async ({ req, params }) => {
@@ -161,6 +162,106 @@ router.add("DELETE /twilio/account", async ({ req }) => {
 });
 
 // Numbers already sitting in the connected account, ready to import.
+
+// ---------------------------------------------------------------------------
+// Where numbers come from
+//
+// One carrier at a time. That is a trunk, not a list of integrations: two
+// connected at once means every outbound call has a question to answer about
+// which one it leaves by. The primary key on org_id enforces it, so swapping is
+// disconnect-then-connect — a deliberate moment rather than a silent re-route.
+// ---------------------------------------------------------------------------
+
+const PROVIDERS = ["twilio", "didlogic"];
+
+router.add("GET /providers", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  const [row] = await sql`
+    select provider, label, connected_at from app_private.number_providers
+     where org_id = ${ctx.orgId}`;
+  return json({ provider: row ?? null, choices: PROVIDERS });
+});
+
+router.add("POST /providers", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  requireAdmin(ctx);
+  const body = await readJson<{ provider?: string; api_key?: string; account_sid?: string; auth_token?: string }>(req);
+  const provider = String(body.provider ?? "").trim().toLowerCase();
+  if (!PROVIDERS.includes(provider)) {
+    throw new HttpError(400, `provider must be one of ${PROVIDERS.join(", ")}`, "BAD_PROVIDER");
+  }
+
+  // Refused rather than replaced. Swapping carriers silently is how a
+  // workspace's calls change route without anyone deciding to.
+  const [existing] = await sql`
+    select provider from app_private.number_providers where org_id = ${ctx.orgId}`;
+  if (existing) {
+    throw new HttpError(
+      409,
+      `${existing.provider} is connected. Disconnect it first — only one carrier at a time.`,
+      "ALREADY_CONNECTED",
+    );
+  }
+
+  let credentials: Record<string, string> = {};
+  let label = provider;
+  if (provider === "didlogic") {
+    const key = String(body.api_key ?? "").trim();
+    if (!key) throw new HttpError(400, "api_key is required", "MISSING_KEY");
+    // Proven before it is stored: a key that does not work should fail here,
+    // not on the first call somebody tries to place.
+    const check = await didlogic.verify(key);
+    credentials = { api_key: key };
+    label = `DIDLogic · ${check.sipAccounts} trunk${check.sipAccounts === 1 ? "" : "s"}`;
+  } else {
+    const sid = String(body.account_sid ?? "").trim();
+    const token = String(body.auth_token ?? "").trim();
+    if (!sid || !token) throw new HttpError(400, "account_sid and auth_token are required", "MISSING_KEY");
+    credentials = { account_sid: sid, auth_token: token };
+    label = `Twilio · ${sid.slice(0, 10)}…`;
+  }
+
+  const [row] = await sql`
+    insert into app_private.number_providers (org_id, provider, credentials, label, connected_by)
+    values (${ctx.orgId}, ${provider}, ${sql.json(credentials)}, ${label}, ${actor.uid})
+    returning provider, label, connected_at`;
+  return json({ provider: row }, 201);
+});
+
+router.add("DELETE /providers", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  requireAdmin(ctx);
+  await sql`delete from app_private.number_providers where org_id = ${ctx.orgId}`;
+  return noContent();
+});
+
+// What is left to spend. The dashboard asks for this; the phone app does not —
+// a balance is an operator's number, not something to put in front of someone
+// mid-call.
+router.add("GET /providers/balance", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  const [row] = await sql`
+    select provider, credentials from app_private.number_providers where org_id = ${ctx.orgId}`;
+  if (!row) throw new HttpError(409, "No carrier connected", "NO_PROVIDER");
+  if (row.provider !== "didlogic") return json({ balance: null, provider: row.provider });
+  const key = (row.credentials as { api_key?: string })?.api_key ?? "";
+  return json({ provider: row.provider, balance: await didlogic.balance(key) });
+});
+
+// The trunks calls leave by, for the carrier that has them.
+router.add("GET /providers/trunks", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  const [row] = await sql`
+    select provider, credentials from app_private.number_providers where org_id = ${ctx.orgId}`;
+  if (!row || row.provider !== "didlogic") return json({ trunks: [] });
+  const key = (row.credentials as { api_key?: string })?.api_key ?? "";
+  return json({ trunks: await didlogic.sipAccounts(key) });
+});
 
 // ---------------------------------------------------------------------------
 // Numbers

@@ -3,13 +3,23 @@
 import { useEffect, useState } from "react";
 import { Table, dur, when } from "../lib/ui";
 
+// The column stores what Twilio calls things; the table should not.
+const OUTCOME = {
+  in_progress: "In progress",
+  completed: "Answered",
+  no_answer: "No answer",
+  busy: "Busy",
+  failed: "Failed",
+  canceled: "Cancelled",
+};
+
 const COLS = [
   ["When", (r) => when(r.started_at ?? r.created_at)],
   ["Direction", (r) => (r.direction === "inbound" ? "In" : "Out")],
   ["From", (r) => r.from_number ?? "—"],
   ["To", (r) => r.to_number ?? "—"],
   ["Who", (r) => r.contact_name ?? "—"],
-  ["Status", (r) => r.status ?? "—"],
+  ["Status", (r) => OUTCOME[r.status] ?? r.status ?? "—"],
   ["Length", (r) => dur(r.duration_seconds)],
 ];
 
