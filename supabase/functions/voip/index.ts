@@ -57,9 +57,56 @@ const router = new Router();
 // Calls
 // ---------------------------------------------------------------------------
 
+// Which carrier this workspace is on, if any.
+async function carrierFor(orgId: number) {
+  const [row] = await sql`
+    select provider, credentials from app_private.number_providers where org_id = ${orgId}`;
+  return row ?? null;
+}
+
+/** `"dima" <6531061544>` — the label is theirs, the number is the part we want. */
+const bareNumber = (value: string) => {
+  const match = /<([^>]+)>/.exec(value ?? "");
+  return (match ? match[1] : value ?? "").trim();
+};
+
 router.add("GET /calls", async ({ req, query }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req, query);
+
+  // The carrier's own record when there is one. For a DIDLogic account it is
+  // the truer answer: what was actually carried and actually billed, where our
+  // table only knows what the app told it before the call connected — which is
+  // why every row in it says in_progress with no duration.
+  const carrier = await carrierFor(ctx.orgId);
+  if (carrier?.provider === "didlogic") {
+    const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
+    // Whose numbers these are has to come from the carrier too. Reading it from
+    // our own phone_numbers table meant the set was empty for a DIDLogic
+    // account, and every call it placed was labelled inbound.
+    const [rows, held] = await Promise.all([didlogic.calls(key), didlogic.numbers(key).catch(() => [])]);
+    const owned = new Set(held.map((n) => String(n.number).replace(/^\+/, "")));
+    return json({
+      source: "didlogic",
+      calls: rows.map((c, i) => {
+        const from = bareNumber(c.from);
+        const to = bareNumber(c.to);
+        const seconds = Number(c.duration ?? 0);
+        return {
+          id: `dl-${i}-${c.timestamp}`,
+          direction: owned.has(from.replace(/^\+/, "")) ? "outbound" : "inbound",
+          from_number: from,
+          to_number: to,
+          duration_seconds: seconds,
+          status: seconds > 0 ? "completed" : "no_answer",
+          started_at: c.timestamp,
+          contact_name: c.destination_name ?? null,
+          amount: c.amount,
+        };
+      }),
+    });
+  }
+
   return json({
     calls: await calls.list(ctx.orgId, {
       contactId: int(query.get("contact_id")),
@@ -162,6 +209,16 @@ router.add("DELETE /twilio/account", async ({ req }) => {
 });
 
 // Numbers already sitting in the connected account, ready to import.
+
+// Texts the carrier has a record of, for the SMS screen.
+router.add("GET /providers/sms", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  const carrier = await carrierFor(ctx.orgId);
+  if (carrier?.provider !== "didlogic") return json({ messages: [] });
+  const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
+  return json({ messages: await didlogic.sms(key) });
+});
 
 // ---------------------------------------------------------------------------
 // Where numbers come from

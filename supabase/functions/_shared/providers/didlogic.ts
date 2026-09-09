@@ -75,6 +75,38 @@ export async function sipAccounts(key: string): Promise<{ id: number; label: str
   }));
 }
 
+export type DidlogicCall = {
+  timestamp: string;
+  from: string;
+  to: string;
+  duration: number;
+  amount: number;
+  type?: string;
+  sip_account?: string;
+  destination_name?: string;
+};
+
+/**
+ * The carrier's own record of what went over the trunk.
+ *
+ * More truthful than ours for a DIDLogic account: this is what was actually
+ * carried and actually billed, where our `calls` table only knows what the app
+ * told it. It also has durations, which is the thing the dashboard was missing.
+ */
+export async function calls(key: string, page = 1): Promise<DidlogicCall[]> {
+  const body = await call(key, `${V1}/calls.json?page=${page}&per_page=100`) as { calls?: DidlogicCall[] };
+  return body?.calls ?? [];
+}
+
+/** Texts the carrier has a record of. */
+export async function sms(key: string, page = 1): Promise<Record<string, unknown>[]> {
+  const body = await call(key, `${V1}/sms.json?page=${page}&per_page=100`) as {
+    sms?: Record<string, unknown>[];
+    messages?: Record<string, unknown>[];
+  };
+  return body?.sms ?? body?.messages ?? [];
+}
+
 /**
  * Numbers available to buy.
  *

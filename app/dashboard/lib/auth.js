@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { FIREBASE_KEY, REFRESH_STORAGE } from "./config";
+import { createContext, useContext, useEffect, useState } from "react";
+import { FIREBASE_KEY, REFRESH_STORAGE, TOKEN_STORAGE } from "./config";
 import { Button, C, Note, card, input } from "./ui";
 
 // The same account as the phone app. Firebase over REST rather than the SDK:
@@ -25,23 +25,62 @@ async function signInWithPassword(email, password) {
   return body;
 }
 
+const Session = createContext({ token: null, ready: false, signIn: async () => {}, signOut: () => {} });
+
+/** Milliseconds left on an ID token; 0 if it cannot be read. */
+function lifeLeft(jwt) {
+  try {
+    const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload.exp * 1000 - Date.now();
+  } catch {
+    return 0;
+  }
+}
+
+const remember = (refreshToken, idToken) => {
+  try {
+    localStorage.setItem(REFRESH_STORAGE, refreshToken);
+    localStorage.setItem(TOKEN_STORAGE, idToken);
+  } catch {}
+};
+
 /**
- * The signed-in token, and how it survives a reload.
+ * The signed-in token, and how it survives both a reload and a tab change.
+ *
+ * It lives in the root layout, which the App Router keeps mounted across
+ * navigations — so moving between tabs no longer throws the session away and
+ * starts again from signed-out. That is what made every tab switch show the
+ * marketing page for a moment.
  *
  * An ID token lasts about an hour, so the refresh token is what makes coming
  * back tomorrow silent. `ready` is false until the restore has been attempted:
  * without it the sign-in form flashes on every load for someone already signed
- * in.
+ * in. The last ID token is kept alongside it so a reload with time still on the
+ * clock is signed in immediately, rather than after a round trip to Google.
  */
-export function useSession() {
+export function SessionProvider({ children }) {
   const [token, setToken] = useState(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     (async () => {
       let refresh = null;
-      try { refresh = localStorage.getItem(REFRESH_STORAGE); } catch {}
+      let cached = null;
+      try {
+        refresh = localStorage.getItem(REFRESH_STORAGE);
+        cached = localStorage.getItem(TOKEN_STORAGE);
+      } catch {}
       if (!refresh) { setReady(true); return; }
+
+      // Comfortably inside its hour: use it as it stands. Minting a fresh one
+      // anyway would change the token every screen's fetch is keyed on, and
+      // every screen would load its data twice.
+      if (cached && lifeLeft(cached) > 5 * 60_000) {
+        setToken(cached);
+        setReady(true);
+        return;
+      }
+
       try {
         const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE_KEY}`, {
           method: "POST",
@@ -49,8 +88,15 @@ export function useSession() {
           body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refresh)}`,
         });
         const body = await res.json();
-        if (res.ok && body.id_token) setToken(body.id_token);
-        else try { localStorage.removeItem(REFRESH_STORAGE); } catch {}
+        if (res.ok && body.id_token) {
+          setToken(body.id_token);
+          remember(body.refresh_token ?? refresh, body.id_token);
+        } else {
+          try {
+            localStorage.removeItem(REFRESH_STORAGE);
+            localStorage.removeItem(TOKEN_STORAGE);
+          } catch {}
+        }
       } catch {}
       setReady(true);
     })();
@@ -58,17 +104,22 @@ export function useSession() {
 
   const signIn = async (email, password) => {
     const body = await signInWithPassword(email, password);
-    try { localStorage.setItem(REFRESH_STORAGE, body.refreshToken); } catch {}
+    remember(body.refreshToken, body.idToken);
     setToken(body.idToken);
   };
 
   const signOut = () => {
-    try { localStorage.removeItem(REFRESH_STORAGE); } catch {}
+    try {
+      localStorage.removeItem(REFRESH_STORAGE);
+      localStorage.removeItem(TOKEN_STORAGE);
+    } catch {}
     setToken(null);
   };
 
-  return { token, ready, signIn, signOut };
+  return <Session.Provider value={{ token, ready, signIn, signOut }}>{children}</Session.Provider>;
 }
+
+export const useSession = () => useContext(Session);
 
 export function SignIn({ onSignIn }) {
   const [email, setEmail] = useState("");

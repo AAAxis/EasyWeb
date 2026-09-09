@@ -1,4 +1,5 @@
 import { Inter } from "next/font/google";
+import { SessionProvider } from "./dashboard/lib/auth";
 
 export const metadata = {
   title: "EasyCall — your phone number, on your phone",
@@ -57,7 +58,9 @@ export default function RootLayout({ children }) {
     <html lang="en" className={inter.className}>
       <body>
         <style dangerouslySetInnerHTML={{ __html: css }} />
-        {children}
+        {/* The session hangs off the layout, which survives a change of route.
+            Below it, moving between tabs is a render, not a sign-in. */}
+        <SessionProvider>{children}</SessionProvider>
       </body>
     </html>
   );

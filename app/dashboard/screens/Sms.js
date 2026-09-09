@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, C, Skeleton, card, input, when } from "../lib/ui";
+import { Avatar, Button, C, Skeleton, card, input, when } from "../lib/ui";
 
 // Threads on the left, the conversation on the right. The same shape as every
 // messaging app, because that is the shape people already know.
@@ -67,13 +67,17 @@ export default function Sms({ api, onError }) {
             style={{
               padding: "12px 14px", cursor: "pointer", borderBottom: "1px solid #F1F2F4",
               background: active?.id === thread.id ? "#EEF2FF" : "transparent",
+              display: "flex", alignItems: "center", gap: 10,
             }}
           >
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {thread.contact_name || thread.subject || "Unknown number"}
-            </div>
-            <div style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {thread.last_message_preview || "No messages"}
+            <Avatar name={thread.contact_name || thread.subject} size={36} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {thread.contact_name || thread.subject || "Unknown number"}
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {thread.last_message_preview || "No messages"}
+              </div>
             </div>
           </div>
         ))}
@@ -86,27 +90,46 @@ export default function Sms({ api, onError }) {
           </div>
         ) : (
           <>
-            <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
-              {active.contact_name || active.subject || "Unknown number"}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+              <Avatar name={active.contact_name || active.subject} size={32} />
+              <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {active.contact_name || active.subject || "Unknown number"}
+              </div>
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 2px", display: "flex", flexDirection: "column", gap: 8 }}>
               {!messages ? <Skeleton rows={3} /> : messages.length === 0 ? (
                 <div style={{ color: C.faint, fontSize: 13 }}>No messages.</div>
-              ) : messages.map((m) => {
+              ) : messages.map((m, i) => {
                 const mine = m.sender_type !== "contact";
+                // Only the first message of a run is badged. Repeating the face
+                // down a stack of six replies is noise; the gutter still holds
+                // its width, so the bubbles stay in one column.
+                const opens = i === 0 || (messages[i - 1].sender_type !== "contact") !== mine;
                 return (
                   <div
                     key={m.id}
-                    dir="auto"
                     style={{
-                      maxWidth: "72%", alignSelf: mine ? "flex-end" : "flex-start",
-                      background: mine ? C.tint : "#F0F2F5", color: mine ? "#fff" : C.text,
-                      borderRadius: 14, padding: "9px 13px", fontSize: 13.5, lineHeight: 1.45,
-                      whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+                      display: "flex", alignItems: "flex-end", gap: 8,
+                      justifyContent: mine ? "flex-end" : "flex-start",
                     }}
                   >
-                    {m.body}
-                    <div style={{ fontSize: 10, opacity: 0.65, marginTop: 3, textAlign: "end" }}>{when(m.created_at)}</div>
+                    {mine ? null : opens ? (
+                      <Avatar name={active.contact_name || active.subject} size={26} />
+                    ) : (
+                      <span style={{ width: 26, flexShrink: 0 }} />
+                    )}
+                    <div
+                      dir="auto"
+                      style={{
+                        maxWidth: "72%",
+                        background: mine ? C.tint : "#F0F2F5", color: mine ? "#fff" : C.text,
+                        borderRadius: 14, padding: "9px 13px", fontSize: 13.5, lineHeight: 1.45,
+                        whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+                      }}
+                    >
+                      {m.body}
+                      <div style={{ fontSize: 10, opacity: 0.65, marginTop: 3, textAlign: "end" }}>{when(m.created_at)}</div>
+                    </div>
                   </div>
                 );
               })}

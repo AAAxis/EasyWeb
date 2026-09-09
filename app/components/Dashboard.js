@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useState } from "react";
-import { SignIn, useSession } from "../dashboard/lib/auth";
+import { useSession } from "../dashboard/lib/auth";
 import { useVoip } from "../dashboard/lib/api";
-import { C, Note } from "../dashboard/lib/ui";
+import { C, Note, Skeleton } from "../dashboard/lib/ui";
 import { Mark } from "./Chrome";
 import Landing from "./Landing";
 
@@ -21,7 +22,9 @@ export const TABS = [
  *
  * Tabs are links rather than state, so each one has an address — reloading
  * Recordings lands on Recordings, and a link to the SMS tab is a link to the
- * SMS tab.
+ * SMS tab. They are `next/link` rather than bare anchors, so following one is
+ * a render and not a fresh document: the session, and the frame around it,
+ * stay exactly where they were.
  */
 export default function Dashboard({ here, children }) {
   const { token, ready, signIn, signOut } = useSession();
@@ -31,7 +34,12 @@ export default function Dashboard({ here, children }) {
   // renders or every one of them re-fetches whenever anything else changes.
   const onError = useCallback((message) => setError(message), []);
 
-  if (!ready || !token) return <Landing onSignIn={signIn} />;
+  // `/` doubles as the marketing page and is rendered on the server for people
+  // arriving without an account, so it shows the landing until the session says
+  // otherwise. The other tabs are not marketing pages: they hold this frame
+  // while the session is restored, which is what stops arriving at one from
+  // looking like being signed out.
+  if (ready ? !token : here === "/") return <Landing onSignIn={signIn} />;
 
   return (
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "24px 24px 72px" }}>
@@ -54,9 +62,10 @@ export default function Dashboard({ here, children }) {
         {TABS.map(([href, label]) => {
           const on = href === here;
           return (
-            <a
+            <Link
               key={href}
               href={href}
+              prefetch
               style={{
                 border: `1px solid ${on ? "#111317" : C.border}`,
                 background: on ? "#111317" : "#fff",
@@ -65,13 +74,13 @@ export default function Dashboard({ here, children }) {
               }}
             >
               {label}
-            </a>
+            </Link>
           );
         })}
       </nav>
 
       <Note tone="bad">{error}</Note>
-      <div style={{ marginTop: 12 }}>{children({ api, onError })}</div>
+      <div style={{ marginTop: 12 }}>{token ? children({ api, onError }) : <Skeleton />}</div>
     </div>
   );
 }

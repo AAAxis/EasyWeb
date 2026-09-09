@@ -9,3 +9,6 @@ export const VOIP_URL = "https://skembiloeumcibtdghzm.supabase.co/functions/v1/v
 export const FIREBASE_KEY = "AIzaSyDQp2BNR5_NzuO3xdCaHiiqHOrrKQejiM4";
 
 export const REFRESH_STORAGE = "easycall_refresh_token";
+// The last ID token, kept so a reload can be signed in before the network
+// answers. It is worth strictly less than the refresh token already beside it.
+export const TOKEN_STORAGE = "easycall_id_token";

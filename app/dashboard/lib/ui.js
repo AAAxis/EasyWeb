@@ -76,6 +76,53 @@ export function Skeleton({ rows = 5 }) {
   );
 }
 
+// Paired background and ink, light enough to sit under a name without shouting.
+const TINTS = [
+  ["#E8EDFF", "#2A46C0"], ["#E5F5EA", "#1C7440"], ["#FDEAEE", "#AE2842"],
+  ["#FFF1DE", "#8F5410"], ["#EEE8FD", "#5539B8"], ["#E1F3F8", "#12637A"],
+];
+
+/**
+ * Someone's initials in a circle.
+ *
+ * The colour is hashed from the name rather than picked at random, so a person
+ * keeps the same one between renders and across screens — an avatar that
+ * changes colour on every load is decoration, not identity. A bare phone number
+ * has no initials worth showing, and a silhouette admits we do not know who it
+ * is more honestly than two arbitrary digits would.
+ */
+export function Avatar({ name, size = 34 }) {
+  const label = String(name ?? "").trim();
+  const named = /[\p{L}]/u.test(label);
+  const key = label || "?";
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  const [bg, ink] = named ? TINTS[hash % TINTS.length] : ["#EDEFF3", "#98A0AE"];
+
+  const initials = named
+    ? label.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase()
+    : null;
+
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: size, height: size, borderRadius: "50%", flexShrink: 0,
+        background: bg, color: ink, display: "inline-flex",
+        alignItems: "center", justifyContent: "center",
+        fontSize: Math.round(size * 0.4), fontWeight: 700, letterSpacing: "0.01em",
+        userSelect: "none",
+      }}
+    >
+      {initials ?? (
+        <svg width={Math.round(size * 0.56)} height={Math.round(size * 0.56)} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5Z" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
 export function Note({ tone = "muted", children }) {
   if (!children) return null;
   const colour = tone === "bad" ? C.bad : tone === "good" ? C.good : C.muted;
