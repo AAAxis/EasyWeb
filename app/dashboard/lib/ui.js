@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 // The small kit this dashboard is built from. Five tabs do not need a design
 // system; they need consistent spacing and one table.
 
@@ -36,7 +38,8 @@ export const dur = (seconds) => {
   return `${Math.floor(n / 60)}:${String(Math.round(n % 60)).padStart(2, "0")}`;
 };
 
-export function Table({ cols, rows, empty = "Nothing yet." }) {
+/** `onRow` makes rows clickable; without it the table is read-only as before. */
+export function Table({ cols, rows, empty = "Nothing yet.", onRow }) {
   if (!rows) return <Skeleton />;
   if (rows.length === 0) return <div style={{ ...card, color: C.muted, fontSize: 13.5 }}>{empty}</div>;
   const cell = { padding: "10px 12px", fontSize: 13, borderBottom: `1px solid ${C.border}`, textAlign: "left" };
@@ -54,7 +57,11 @@ export function Table({ cols, rows, empty = "Nothing yet." }) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={row.id ?? i}>
+            <tr
+              key={row.id ?? i}
+              onClick={onRow ? () => onRow(row) : undefined}
+              style={onRow ? { cursor: "pointer" } : undefined}
+            >
               {cols.map(([label, render]) => (
                 <td key={label} style={{ ...cell, color: C.text }}>{render(row)}</td>
               ))}
@@ -150,3 +157,50 @@ export const input = {
   border: `1px solid ${C.border}`, borderRadius: 10, outline: "none", color: C.text,
   background: C.surface,
 };
+
+/**
+ * A dialog over the page. Closes on the backdrop and on Escape, because both
+ * are what people try before looking for the X.
+ */
+export function Modal({ title, onClose, children }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", inset: 0, background: "rgba(11,18,32,0.38)", zIndex: 50 }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        style={{
+          position: "fixed", zIndex: 51, top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+          width: 460, maxWidth: "calc(100vw - 32px)", maxHeight: "calc(100vh - 64px)", overflowY: "auto",
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+          boxShadow: "0 24px 60px rgba(11,18,32,0.22)", padding: 18,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <div style={{ flex: 1, fontSize: 15.5, fontWeight: 700, color: C.text }}>{title}</div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              border: `1px solid ${C.border}`, background: "#fff", color: C.muted, borderRadius: 9,
+              width: 28, height: 28, cursor: "pointer", fontSize: 15, lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </>
+  );
+}

@@ -1,11 +1,10 @@
 "use client";
 
-// /phone kept its address — links and bookmarks point at it — but it is no
-// longer a tab of its own: it lands on the same screen, where the keypad now
-// lives beside the numbers.
+// Kept as an address — links and bookmarks point here — but not a tab. The
+// keypad is the Call button, wherever you are.
 import Dashboard from "../components/Dashboard";
-import Console from "../components/Console";
+import Overview from "../dashboard/screens/Overview";
 
 export default function Page() {
-  return <Dashboard here="/">{(props) => <Console {...props} />}</Dashboard>;
+  return <Dashboard here="/">{(props) => <Overview {...props} />}</Dashboard>;
 }

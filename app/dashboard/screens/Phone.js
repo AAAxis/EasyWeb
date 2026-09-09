@@ -35,7 +35,7 @@ const normalize = (input) => {
   return digits.startsWith("+") ? digits : `+${digits.replace(/^0+/, "")}`;
 };
 
-export default function Phone({ api, onError }) {
+export default function Phone({ api, onError, onClose }) {
   const [number, setNumber] = useState("");
   // Set while a press on 0 is being held, and cleared by the press that
   // follows — so the release that produced a + does not also type a 0.
@@ -165,8 +165,27 @@ export default function Phone({ api, onError }) {
   return (
     <div style={{ maxWidth: 360 }}>
       <div style={{ ...card, textAlign: "center" }}>
-        <div style={{ fontSize: 12.5, color: state === "on" ? C.good : C.muted, fontWeight: 600, minHeight: 18 }}>
-          {status}
+        <div style={{ display: "flex", alignItems: "center", minHeight: 18 }}>
+          <span style={{ flex: 1 }} />
+          <div style={{ fontSize: 12.5, color: state === "on" ? C.good : C.muted, fontWeight: 600 }}>
+            {status}
+          </div>
+          <span style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
+            {/* Only when it is a dialog. Shown on the same line as the status
+                so opening the keypad does not shift everything down a row. */}
+            {onClose ? (
+              <button
+                onClick={onClose}
+                aria-label="Close the keypad"
+                style={{
+                  border: "none", background: "transparent", color: C.faint,
+                  cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0,
+                }}
+              >
+                ×
+              </button>
+            ) : null}
+          </span>
         </div>
 
         <input

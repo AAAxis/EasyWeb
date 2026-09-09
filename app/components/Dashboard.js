@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import Phone from "../dashboard/screens/Phone";
 import { useSession } from "../dashboard/lib/auth";
 import { useVoip } from "../dashboard/lib/api";
 import { C, Note, Skeleton } from "../dashboard/lib/ui";
@@ -9,14 +10,26 @@ import { Mark } from "./Chrome";
 import Landing from "./Landing";
 
 export const TABS = [
-  // No Phone tab: the keypad is on the Dashboard, next to the numbers.
+  // Three. The keypad is a button rather than a tab, calls and texts share one
+  // screen, recordings live on the call they belong to, and the float is on
+  // Integrations above what it pays for.
   ["/", "Dashboard"],
-  ["/calls", "Calls"],
-  ["/sms", "SMS"],
-  ["/recordings", "Recordings"],
-  // No Balance tab: the float is on Integrations, above what it pays for.
+  ["/calls", "Activity"],
   ["/integrations", "Integrations"],
 ];
+
+/**
+ * The keypad, reachable from any screen.
+ *
+ * `Phone` is mounted for the whole session and merely hidden when the dialog is
+ * shut — never unmounted. The Twilio SDK registers on mount and drops that
+ * registration on unmount, so a keypad that exists only while its dialog is
+ * open is a phone nobody can ring. Hiding keeps it registered, and a call in
+ * progress survives moving between tabs because the shell outlives them.
+ */
+const Dock = createContext({ open: () => {} });
+
+export const usePhone = () => useContext(Dock);
 
 /**
  * The shell every dashboard route wears: the session, the bar, the tabs.
@@ -37,6 +50,8 @@ export default function Dashboard({ here, children }) {
   const { token, ready, signIn, signOut } = useSession();
   const [error, setError] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const dock = useMemo(() => ({ open: () => setPhoneOpen(true) }), []);
   const api = useVoip(token);
   // Screens take these as props, so they have to keep their identity across
   // renders or every one of them re-fetches whenever anything else changes.
@@ -178,7 +193,31 @@ export default function Dashboard({ here, children }) {
       {/* Set off from the navigation above it: the tabs are chrome, what is
           under them is the screen, and 12px read as one block of six pills and
           three tiles. */}
-      <div style={{ marginTop: 26 }}>{token ? children({ api, onError }) : <Skeleton />}</div>
+      <div style={{ marginTop: 26 }}>
+        <Dock.Provider value={dock}>{token ? children({ api, onError }) : <Skeleton />}</Dock.Provider>
+      </div>
+
+      {token ? (
+        <>
+          {phoneOpen ? (
+            <div
+              onClick={() => setPhoneOpen(false)}
+              style={{ position: "fixed", inset: 0, background: "rgba(11,18,32,0.38)", zIndex: 50 }}
+            />
+          ) : null}
+          {/* Hidden, not unmounted — see the note on `Dock`. */}
+          <div
+            style={phoneOpen
+              ? {
+                position: "fixed", zIndex: 51, top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                width: 360, maxWidth: "calc(100vw - 32px)", maxHeight: "calc(100vh - 48px)", overflowY: "auto",
+              }
+              : { display: "none" }}
+          >
+            <Phone api={api} onError={onError} onClose={() => setPhoneOpen(false)} />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

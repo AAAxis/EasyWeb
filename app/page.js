@@ -1,8 +1,8 @@
 "use client";
 
 import Dashboard from "./components/Dashboard";
-import Console from "./components/Console";
+import Overview from "./dashboard/screens/Overview";
 
 export default function Home() {
-  return <Dashboard here="/">{(props) => <Console {...props} />}</Dashboard>;
+  return <Dashboard here="/">{(props) => <Overview {...props} />}</Dashboard>;
 }
