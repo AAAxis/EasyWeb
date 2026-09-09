@@ -71,8 +71,11 @@ export default function Balance({ api, onError }) {
   }
 
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div style={{ ...card, flex: "1 1 320px", minWidth: 280 }}>
+    // `stretch` rather than `flex-start`: the two cards hold different amounts
+    // and one stopping short of the other read as a mistake rather than as less
+    // to say.
+    <div style={{ display: "flex", gap: 12, alignItems: "stretch", flexWrap: "wrap" }}>
+      <div style={{ ...card, flex: "1 1 320px", minWidth: 280, display: "flex", flexDirection: "column" }}>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: C.faint, textTransform: "uppercase", letterSpacing: "0.04em" }}>
           Balance
         </div>
@@ -96,7 +99,7 @@ export default function Balance({ api, onError }) {
           </div>
         )}
 
-        <div style={{ fontSize: 12, color: C.faint, marginTop: 12 }}>
+        <div style={{ fontSize: 12, color: C.faint, marginTop: "auto", paddingTop: 12 }}>
           Held at OxaPay{state.currencies ? ` · ${state.currencies} currencies accepted` : ""}.
         </div>
       </div>
