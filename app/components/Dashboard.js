@@ -9,6 +9,7 @@ import Landing from "./Landing";
 
 export const TABS = [
   ["/", "Dashboard"],
+  ["/phone", "Phone"],
   ["/calls", "Calls"],
   ["/sms", "SMS"],
   ["/recordings", "Recordings"],

@@ -1,0 +1,169 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Button, C, Note, card, input } from "../lib/ui";
+
+// A softphone in the page.
+//
+// The Chrome extension does this from an offscreen document, which is a
+// Manifest V3 workaround — a service worker cannot hold a WebRTC connection. A
+// web page has no such problem, so the SDK runs here directly: no extension to
+// install, no iframe to embed.
+//
+// The token comes from POST /voice/token, and the TwiML app it is minted
+// against points at the same /twilio/voice handler the phone app dials
+// through — so a call from this keypad and a call from the app are the same
+// call, logged the same way.
+const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+
+export default function Phone({ api, onError }) {
+  const [number, setNumber] = useState("");
+  const [state, setState] = useState("loading"); // loading | ready | calling | on | error
+  const [incoming, setIncoming] = useState(null);
+  const [muted, setMuted] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [note, setNote] = useState(null);
+  const device = useRef(null);
+  const call = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { token } = await api("/voice/token", { method: "POST", body: JSON.stringify({}) });
+        // Imported here rather than at the top: the SDK touches browser APIs on
+        // load, and this file is rendered on the server first.
+        const { Device } = await import("@twilio/voice-sdk");
+        if (!alive) return;
+        const d = new Device(token, { logLevel: "error", codecPreferences: ["opus", "pcmu"] });
+        d.on("registered", () => setState("ready"));
+        d.on("error", (e) => { setState("error"); onError(e?.message ?? "The phone could not connect."); });
+        d.on("incoming", (c) => {
+          setIncoming(c);
+          c.on("disconnect", () => setIncoming(null));
+          c.on("cancel", () => setIncoming(null));
+        });
+        await d.register();
+        device.current = d;
+      } catch (e) {
+        setState("error");
+        onError(e?.message ?? "Couldn't start the phone.");
+      }
+    })();
+    return () => { alive = false; device.current?.destroy(); };
+  }, [api, onError]);
+
+  // The timer only runs while a call is up.
+  useEffect(() => {
+    if (state !== "on") { setSeconds(0); return; }
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [state]);
+
+  const attach = (c) => {
+    call.current = c;
+    c.on("accept", () => setState("on"));
+    c.on("disconnect", () => { setState("ready"); call.current = null; setMuted(false); });
+    c.on("cancel", () => { setState("ready"); call.current = null; });
+    c.on("reject", () => { setState("ready"); call.current = null; });
+  };
+
+  const dial = async () => {
+    const to = number.trim();
+    if (!to || !device.current) return;
+    setState("calling");
+    setNote(null);
+    try {
+      // The row exists from the moment it is dialled, the same as the app does
+      // it; Twilio's status callback finishes it with the duration.
+      api("/calls", { method: "POST", body: JSON.stringify({ direction: "outbound", to_number: to, status: "in_progress" }) })
+        .catch(() => {});
+      attach(await device.current.connect({ params: { To: to } }));
+    } catch (e) {
+      setState("ready");
+      onError(e?.message ?? "The call could not be placed.");
+    }
+  };
+
+  const hangUp = () => { call.current?.disconnect(); setState("ready"); };
+  const answer = () => { attach(incoming); incoming.accept(); setIncoming(null); };
+  const decline = () => { incoming.reject(); setIncoming(null); };
+  const toggleMute = () => {
+    if (!call.current) return;
+    const next = !muted;
+    call.current.mute(next);
+    setMuted(next);
+  };
+
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  const status = {
+    loading: "Starting the phone…",
+    ready: "Ready",
+    calling: "Calling…",
+    on: clock,
+    error: "Not available",
+  }[state];
+
+  return (
+    <div style={{ maxWidth: 360 }}>
+      <div style={{ ...card, textAlign: "center" }}>
+        <div style={{ fontSize: 12.5, color: state === "on" ? C.good : C.muted, fontWeight: 600, minHeight: 18 }}>
+          {status}
+        </div>
+
+        <input
+          style={{ ...input, fontSize: 24, textAlign: "center", border: "none", fontWeight: 600, letterSpacing: "0.02em", padding: "14px 0" }}
+          value={number}
+          onChange={(e) => setNumber(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && dial()}
+          placeholder="+1 555 000 0000"
+          inputMode="tel"
+        />
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, margin: "10px 0 16px" }}>
+          {KEYS.map((k) => (
+            <button
+              key={k}
+              onClick={() => (state === "on" ? call.current?.sendDigits(k) : setNumber((n) => n + k))}
+              style={{
+                border: `1px solid ${C.border}`, background: "#fff", borderRadius: 12,
+                padding: "14px 0", fontSize: 19, fontWeight: 600, color: C.text, cursor: "pointer",
+              }}
+            >
+              {k}
+            </button>
+          ))}
+        </div>
+
+        {state === "on" || state === "calling" ? (
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <Button onClick={toggleMute}>{muted ? "Unmute" : "Mute"}</Button>
+            <Button onClick={hangUp} tone="bad">Hang up</Button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <Button onClick={dial} disabled={state !== "ready" || !number.trim()}>Call</Button>
+            <Button onClick={() => setNumber((n) => n.slice(0, -1))} disabled={!number}>⌫</Button>
+          </div>
+        )}
+        <Note>{note}</Note>
+      </div>
+
+      {incoming ? (
+        <div style={{ ...card, marginTop: 12, textAlign: "center" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+            {incoming.parameters?.From ?? "Someone"} is calling
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
+            <Button onClick={answer}>Answer</Button>
+            <Button onClick={decline} tone="bad">Decline</Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ fontSize: 12, color: C.faint, marginTop: 12 }}>
+        The browser will ask for the microphone the first time you call.
+      </div>
+    </div>
+  );
+}
