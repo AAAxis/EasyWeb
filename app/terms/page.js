@@ -1,8 +1,9 @@
+import Marketing from "../components/Marketing";
 export const metadata = { title: "EasyCall — Terms" };
 
 export default function Terms() {
   return (
-    <>
+    <Marketing>
       <h1>Terms</h1>
       <p className="lede">The short version of what you agree to by using EasyCall.</p>
 
@@ -44,6 +45,6 @@ export default function Terms() {
 
       <h2>Contact</h2>
       <p><a href="mailto:support@chatkit.cc">support@chatkit.cc</a></p>
-    </>
+    </Marketing>
   );
 }

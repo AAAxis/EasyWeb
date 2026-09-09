@@ -1,3 +1,4 @@
+import Marketing from "../components/Marketing";
 export const metadata = { title: "EasyCall — Privacy" };
 
 // Written from what the app actually does, not from a template: every item
@@ -5,7 +6,7 @@ export const metadata = { title: "EasyCall — Privacy" };
 // that this page exists and that it matches the app's behaviour.
 export default function Privacy() {
   return (
-    <>
+    <Marketing>
       <h1>Privacy</h1>
       <p className="lede">
         What EasyCall stores, why, and how to get rid of it.
@@ -53,6 +54,6 @@ export default function Privacy() {
       <p>
         Questions about any of this: <a href="mailto:support@chatkit.cc">support@chatkit.cc</a>.
       </p>
-    </>
+    </Marketing>
   );
 }

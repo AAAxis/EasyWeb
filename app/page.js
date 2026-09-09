@@ -1,39 +1,70 @@
-// The handset, drawn rather than loaded: the artwork lives in the app bundle
-// and this page should not wait on an image to say what the app is.
-function Handset() {
+"use client";
+
+import { useCallback, useState } from "react";
+import { SignIn, useSession } from "./dashboard/lib/auth";
+import { useVoip } from "./dashboard/lib/api";
+import { C, Note, Skeleton } from "./dashboard/lib/ui";
+import Overview from "./dashboard/screens/Overview";
+import Calls from "./dashboard/screens/Calls";
+import Sms from "./dashboard/screens/Sms";
+import Recordings from "./dashboard/screens/Recordings";
+import Integrations from "./dashboard/screens/Integrations";
+
+const TABS = [
+  ["overview", "Dashboard", Overview],
+  ["calls", "Calls", Calls],
+  ["sms", "SMS", Sms],
+  ["recordings", "Recordings", Recordings],
+  ["integrations", "Integrations", Integrations],
+];
+
+export default function Dashboard() {
+  const { token, ready, signIn, signOut } = useSession();
+  const [tab, setTab] = useState("overview");
+  const [error, setError] = useState(null);
+  const api = useVoip(token);
+  // Screens take this as a prop, so it has to keep its identity across renders
+  // or every one of them re-fetches on every keystroke elsewhere.
+  const onError = useCallback((message) => setError(message), []);
+
+  if (!ready) return <div style={{ padding: 40 }}><Skeleton rows={3} /></div>;
+  if (!token) return <SignIn onSignIn={signIn} />;
+
+  const Screen = (TABS.find(([key]) => key === tab) ?? TABS[0])[2];
+
   return (
-    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M6.6 3.5c.5-.2 1.1 0 1.4.5l1.7 3c.3.5.2 1.1-.2 1.5l-1.3 1.2c.9 1.9 2.4 3.4 4.3 4.3l1.2-1.3c.4-.4 1-.5 1.5-.2l3 1.7c.5.3.7.9.5 1.4l-.8 2c-.2.6-.8.9-1.4.8C10.6 17.4 6.6 13.4 5.3 6.5c-.1-.6.2-1.2.8-1.4l.5-1.6z"
-        fill="#fff"
-      />
-    </svg>
-  );
-}
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 20px 60px" }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>EasyCall</div>
+        <button
+          onClick={signOut}
+          style={{ marginLeft: "auto", border: `1px solid ${C.border}`, background: C.surface, color: C.muted, borderRadius: 999, padding: "6px 14px", fontSize: 12.5, cursor: "pointer" }}
+        >
+          Sign out
+        </button>
+      </header>
 
-export default function Home() {
-  return (
-    <>
-      <div className="mark"><Handset /></div>
-      <h1>Your phone number, on your phone.</h1>
-      <p className="lede">
-        EasyCall makes and takes calls on a real phone number, and texts from the
-        same one. Calls can be recorded, and every call and message stays in one
-        place.
-      </p>
+      <nav style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+        {TABS.map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => { setTab(key); setError(null); }}
+            style={{
+              border: `1px solid ${tab === key ? "#111317" : C.border}`,
+              background: tab === key ? "#111317" : C.surface,
+              color: tab === key ? "#fff" : C.text,
+              borderRadius: 999, padding: "7px 15px", fontSize: 13, fontWeight: 500, cursor: "pointer",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
-      <h2>What it does</h2>
-      <ul>
-        <li>Call and answer on a number of your own, over the internet.</li>
-        <li>Text from that same number, with the whole thread kept together.</li>
-        <li>Record calls, and play them back later.</li>
-      </ul>
-
-      <h2>Getting it</h2>
-      <p>
-        EasyCall is an iPhone app. It is in review with the App Store — this page
-        will carry the download link the moment it is approved.
-      </p>
-    </>
+      <Note tone="bad">{error}</Note>
+      <div style={{ marginTop: 12 }}>
+        <Screen api={api} onError={onError} />
+      </div>
+    </div>
   );
 }

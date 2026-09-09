@@ -13,7 +13,6 @@ const css = `
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
-  main { max-width: 720px; margin: 0 auto; padding: 72px 24px 96px; }
   h1 { font-size: 40px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 12px; }
   h2 { font-size: 20px; letter-spacing: -0.01em; margin: 40px 0 10px; }
   p, li { color: var(--soft); }
@@ -29,15 +28,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <style dangerouslySetInnerHTML={{ __html: css }} />
-        <main>
-          {children}
-          <nav>
-            <a href="/">EasyCall</a>
-            <a href="/privacy">Privacy</a>
-            <a href="/terms">Terms</a>
-            <a href="mailto:support@chatkit.cc">Support</a>
-          </nav>
-        </main>
+        {children}
       </body>
     </html>
   );
