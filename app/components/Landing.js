@@ -90,9 +90,7 @@ export default function Landing({ onSignIn }) {
               conversation stays together — on the iPhone app, and here.
             </p>
 
-            <StoreBadges />
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 22 }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <a className="btn" style={{ background: "var(--wash)", color: "var(--ink)" }} href="/about">
                 What it does
               </a>
