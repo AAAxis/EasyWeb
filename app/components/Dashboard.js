@@ -10,18 +10,18 @@ import { Mark } from "./Chrome";
 import Landing from "./Landing";
 
 /**
- * The keypad, reachable from any screen.
+ * The shell every signed-in route wears.
  *
- * `Phone` is mounted for the whole session and merely hidden when the dialog is
- * shut — never unmounted. The Twilio SDK registers on mount and drops that
- * registration on unmount, so a keypad that exists only while its dialog is
- * open is a phone nobody can ring. Hiding keeps it registered, and a call in
- * progress survives moving between screens because the shell outlives them.
- */
-/**
- * The shell every signed-in route wears. Navigation is deliberately part of
- * the header rather than a tab bar: the logo returns to Activity and the
- * profile/balance control opens Settings.
+ * Two screens, and no tab bar: Activity is the app, and the profile control in
+ * the header — which wears the balance, because that is the number worth a
+ * glance — opens Settings over it. The logo comes back.
+ *
+ * The keypad belongs to the shell rather than to either screen. It is mounted
+ * for the whole session and merely hidden when its dialog shuts, never
+ * unmounted: the Twilio SDK registers on mount and drops that registration on
+ * unmount, so a keypad that exists only while its dialog is open is a phone
+ * nobody can ring. Hiding keeps it registered, and a call in progress survives
+ * moving between screens because the shell outlives them.
  */
 export default function Dashboard({ here, children }) {
   const { token, ready, signIn, signOut } = useSession();
@@ -97,9 +97,6 @@ export default function Dashboard({ here, children }) {
       </header>
 
       <Note tone="bad">{error}</Note>
-      {/* Set off from the navigation above it: the tabs are chrome, what is
-          under them is the screen, and 12px read as one block of six pills and
-          three tiles. */}
       {here === "/integrations" && token ? (
         <section
           aria-label="Settings"
