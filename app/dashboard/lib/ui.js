@@ -28,7 +28,9 @@ export const card = {
 export const when = (value) => {
   if (!value) return "—";
   const d = new Date(value);
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  const date = d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${date} ${time}`;
 };
 
 /** Seconds as m:ss, because 143 means nothing at a glance. */
