@@ -15,6 +15,10 @@ import { Button, C, Note, card, input } from "../lib/ui";
 // through — so a call from this keypad and a call from the app are the same
 // call, logged the same way.
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+const KEY_LABELS = {
+  2: "ABC", 3: "DEF", 4: "GHI", 5: "JKL", 6: "MNO",
+  7: "PQRS", 8: "TUV", 9: "WXYZ", 0: "+",
+};
 
 // How long a press on 0 has to last to mean +. The same gesture every phone
 // keypad uses, so it needs no explaining — but it does need labelling, which is
@@ -164,6 +168,38 @@ export default function Phone({ api, onError, onClose }) {
 
   return (
     <div className="ec-phone" style={{ maxWidth: 360 }}>
+      <style>{`
+        .ec-dial-keys {
+          display: grid; grid-template-columns: repeat(3, 1fr);
+          margin: 12px 0 16px; border-top: 1px solid ${C.border}; border-left: 1px solid ${C.border};
+        }
+        .ec-dial-key {
+          min-height: 82px; border: 0; border-right: 1px solid ${C.border};
+          border-bottom: 1px solid ${C.border}; background: #fff; color: ${C.text};
+          cursor: pointer; user-select: none; touch-action: manipulation;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .ec-dial-key:active { background: #f1f3f5; }
+        .ec-dial-number { font-size: 30px; font-weight: 300; line-height: 1; }
+        .ec-dial-letters { min-height: 13px; margin-top: 5px; color: ${C.faint}; font-size: 10px; letter-spacing: .08em; }
+        .ec-dial-actions { display: flex; gap: 10px; }
+        .ec-dial-action {
+          flex: 1; min-height: 54px; border: 0; border-radius: 10px; color: #fff;
+          font-size: 18px; font-weight: 600; cursor: pointer;
+        }
+        .ec-dial-action:disabled { background: #dfe3e8 !important; color: ${C.faint}; cursor: default; }
+        @media (max-width: 720px) {
+          .ec-phone-card { display: flex; flex-direction: column; }
+          .ec-dial-number-wrap { margin: 10px 0 18px !important; }
+          .ec-dial-input { font-size: 28px !important; }
+          .ec-dial-keys { flex: 1; margin: 0 0 18px; grid-template-rows: repeat(4, minmax(92px, 1fr)); }
+          .ec-dial-key { min-height: 92px; }
+          .ec-dial-number { font-size: clamp(34px, 11vw, 48px); font-weight: 300; color: #73777d; }
+          .ec-dial-letters { font-size: 12px; color: #a5a9ae; }
+          .ec-dial-action { min-height: 68px; border-radius: 0; font-size: 24px; font-weight: 400; }
+          .ec-phone-help { display: none; }
+        }
+      `}</style>
       <div className="ec-phone-card" style={{ ...card, textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "center", minHeight: 18 }}>
           <span style={{ flex: 1 }} />
@@ -188,16 +224,32 @@ export default function Phone({ api, onError, onClose }) {
           </span>
         </div>
 
-        <input
-          style={{ ...input, fontSize: 24, textAlign: "center", border: "none", fontWeight: 600, letterSpacing: "0.02em", padding: "14px 0" }}
-          value={number}
-          onChange={(e) => setNumber(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && dial()}
-          placeholder="+1 555 000 0000"
-          inputMode="tel"
-        />
+        <div className="ec-dial-number-wrap" style={{ position: "relative" }}>
+          <input
+            className="ec-dial-input"
+            style={{ ...input, fontSize: 24, textAlign: "center", border: "none", fontWeight: 500, letterSpacing: "0.02em", padding: "14px 40px" }}
+            value={number}
+            onChange={(e) => setNumber(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && dial()}
+            placeholder="Enter a number"
+            inputMode="tel"
+          />
+          {number && state !== "on" ? (
+            <button
+              onClick={() => setNumber((n) => n.slice(0, -1))}
+              aria-label="Delete last digit"
+              style={{
+                position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
+                width: 36, height: 36, border: 0, background: "transparent", color: C.muted,
+                fontSize: 21, cursor: "pointer",
+              }}
+            >
+              ⌫
+            </button>
+          ) : null}
+        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, margin: "10px 0 16px" }}>
+        <div className="ec-dial-keys">
           {KEYS.map((k) => {
             // Holding 0 types +, as it does on a phone. In a call the keypad is
             // sending DTMF, where + is not a tone and the hold means nothing.
@@ -224,30 +276,23 @@ export default function Phone({ api, onError, onClose }) {
                   if (hold.current && hold.current !== "used") { clearTimeout(hold.current); hold.current = null; }
                 } : undefined}
                 onContextMenu={holds ? (e) => e.preventDefault() : undefined}
-                style={{
-                  border: `1px solid ${C.border}`, background: "#fff", borderRadius: 12,
-                  padding: holds ? "8px 0 6px" : "14px 0", fontSize: 19, fontWeight: 600,
-                  color: C.text, cursor: "pointer", userSelect: "none", touchAction: "manipulation",
-                }}
+                className="ec-dial-key"
               >
-                {k}
-                {holds ? (
-                  <div style={{ fontSize: 10.5, fontWeight: 600, color: C.faint, marginTop: -1 }}>+</div>
-                ) : null}
+                <span className="ec-dial-number">{k}</span>
+                <span className="ec-dial-letters">{KEY_LABELS[k] ?? ""}</span>
               </button>
             );
           })}
         </div>
 
         {state === "on" || state === "calling" ? (
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <Button onClick={toggleMute}>{muted ? "Unmute" : "Mute"}</Button>
-            <Button onClick={hangUp} tone="bad">Hang up</Button>
+          <div className="ec-dial-actions">
+            <button className="ec-dial-action" onClick={toggleMute} style={{ background: C.muted }}>{muted ? "Unmute" : "Mute"}</button>
+            <button className="ec-dial-action" onClick={hangUp} style={{ background: C.bad }}>Hang up</button>
           </div>
         ) : (
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <Button onClick={dial} disabled={state !== "ready" || !number.trim()}>Call</Button>
-            <Button onClick={() => setNumber((n) => n.slice(0, -1))} disabled={!number}>⌫</Button>
+          <div className="ec-dial-actions">
+            <button className="ec-dial-action" onClick={dial} disabled={state !== "ready" || !number.trim()} style={{ background: "#8CC814" }}>Call</button>
           </div>
         )}
         <Note>{note}</Note>
@@ -265,7 +310,7 @@ export default function Phone({ api, onError, onClose }) {
         </div>
       ) : null}
 
-      <div style={{ fontSize: 12, color: C.faint, marginTop: 12 }}>
+      <div className="ec-phone-help" style={{ fontSize: 12, color: C.faint, marginTop: 12 }}>
         The browser will ask for the microphone the first time you call.
       </div>
     </div>

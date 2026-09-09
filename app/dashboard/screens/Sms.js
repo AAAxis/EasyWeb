@@ -56,8 +56,27 @@ export default function Sms({ api, onError }) {
   if (!threads) return <Skeleton />;
 
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "stretch", minHeight: 460 }}>
-      <div style={{ ...card, padding: 0, width: 280, flexShrink: 0, overflowY: "auto", maxHeight: 600 }}>
+    <div className="ec-sms-layout" style={{ display: "flex", gap: 12, alignItems: "stretch", minHeight: 460 }}>
+      <style>{`
+        .ec-sms-back { display: none; }
+        @media (max-width: 720px) {
+          .ec-sms-layout { display: block !important; min-height: 0 !important; }
+          .ec-sms-list { width: 100% !important; max-height: none !important; }
+          .ec-sms-detail { display: none !important; }
+          .ec-sms-detail.ec-sms-detail-open {
+            display: flex !important; position: fixed; inset: 0; z-index: 45;
+            max-height: none !important; border: 0 !important; border-radius: 0 !important;
+            padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)) !important;
+            background: #fff;
+          }
+          .ec-sms-back {
+            display: inline-flex; width: 36px; height: 36px; flex-shrink: 0;
+            align-items: center; justify-content: center; border: 0; border-radius: 50%;
+            background: #f1f3f5; color: ${C.text}; font-size: 22px; cursor: pointer;
+          }
+        }
+      `}</style>
+      <div className="ec-sms-list" style={{ ...card, padding: 0, width: 280, flexShrink: 0, overflowY: "auto", maxHeight: 600 }}>
         {threads.length === 0 ? (
           <div style={{ padding: 16, fontSize: 13, color: C.muted }}>No texts yet.</div>
         ) : threads.map((thread) => (
@@ -83,7 +102,7 @@ export default function Sms({ api, onError }) {
         ))}
       </div>
 
-      <div style={{ ...card, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", maxHeight: 600 }}>
+      <div className={`ec-sms-detail${active ? " ec-sms-detail-open" : ""}`} style={{ ...card, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", maxHeight: 600 }}>
         {!active ? (
           <div style={{ flex: 1, display: "grid", placeItems: "center", color: C.faint, fontSize: 14 }}>
             Pick a conversation
@@ -91,6 +110,13 @@ export default function Sms({ api, onError }) {
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+              <button
+                className="ec-sms-back"
+                onClick={() => { openId.current = null; setActive(null); setMessages(null); }}
+                aria-label="Back to conversations"
+              >
+                ‹
+              </button>
               <Avatar name={active.contact_name || active.subject} size={32} />
               <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {active.contact_name || active.subject || "Unknown number"}
