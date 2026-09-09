@@ -1,0 +1,14 @@
+# Same Supabase project as the CRM, on purpose: a call still lands on the
+# contact's timeline and an SMS still shows up in the CRM's inbox because both
+# repos write the same Postgres. What moved out is the code, not the data.
+project_id = "skembiloeumcibtdghzm"
+
+[functions.voip]
+# The API verifies Firebase tokens itself; Supabase's own JWT gate would reject
+# them before they reach it.
+verify_jwt = false
+
+[functions.twilio]
+# Twilio authenticates by X-Twilio-Signature, which it computes over the URL it
+# was configured with. There is no JWT to check.
+verify_jwt = false
