@@ -68,14 +68,15 @@ export default function Dashboard({ here, children }) {
         }
         .ec-scrim { position: fixed; inset: 0; background: rgba(11, 18, 32, 0.38); z-index: 40; }
         .ec-drawer {
-          position: fixed; top: 0; left: 0; bottom: 0; z-index: 41;
+          position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
           width: 258px; max-width: 82vw; overflow-y: auto;
-          background: #fff; box-shadow: 0 10px 40px rgba(11, 18, 32, 0.18);
+          background: #fff; box-shadow: -10px 0 40px rgba(11, 18, 32, 0.18);
           padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;
         }
         @media (max-width: 720px) {
           .ec-nav { display: none; }
           .ec-burger { display: inline-flex; }
+          .ec-signout { display: none; }
         }
         /* Above the breakpoint the drawer is not displayed at all, so it cannot
            be left hanging open by a resize — no width in state to go stale. */
@@ -84,6 +85,23 @@ export default function Dashboard({ here, children }) {
         }
       `}</style>
       <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <Mark size={30} />
+        <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>EasyCall</span>
+        <span style={{ flex: 1 }} />
+        {/* Signing out moves into the drawer on a phone rather than sitting
+            beside the button that opens it — two controls in the same corner,
+            one of them ending the session, is a thumb away from a mistake. */}
+        <button
+          className="ec-signout"
+          onClick={signOut}
+          style={{
+            border: `1px solid ${C.border}`, background: "#fff", color: C.muted,
+            borderRadius: 999, padding: "7px 15px", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          Sign out
+        </button>
+        {/* On the right, the side the drawer comes from. */}
         <button
           className="ec-burger"
           onClick={() => setMenuOpen(true)}
@@ -93,18 +111,6 @@ export default function Dashboard({ here, children }) {
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
             <path d="M4 7h16M4 12h16M4 17h16" />
           </svg>
-        </button>
-        <Mark size={30} />
-        <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>EasyCall</span>
-        <span style={{ flex: 1 }} />
-        <button
-          onClick={signOut}
-          style={{
-            border: `1px solid ${C.border}`, background: "#fff", color: C.muted,
-            borderRadius: 999, padding: "7px 15px", fontSize: 13, cursor: "pointer",
-          }}
-        >
-          Sign out
         </button>
       </header>
 
@@ -153,12 +159,26 @@ export default function Dashboard({ here, children }) {
                 </Link>
               );
             })}
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={() => { setMenuOpen(false); signOut(); }}
+              style={{
+                border: "none", borderTop: `1px solid ${C.border}`, background: "transparent",
+                color: C.muted, textAlign: "left", cursor: "pointer",
+                padding: "14px 13px 4px", marginTop: 8, fontSize: 14.5, fontWeight: 500,
+              }}
+            >
+              Sign out
+            </button>
           </aside>
         </>
       ) : null}
 
       <Note tone="bad">{error}</Note>
-      <div style={{ marginTop: 12 }}>{token ? children({ api, onError }) : <Skeleton />}</div>
+      {/* Set off from the navigation above it: the tabs are chrome, what is
+          under them is the screen, and 12px read as one block of six pills and
+          three tiles. */}
+      <div style={{ marginTop: 26 }}>{token ? children({ api, onError }) : <Skeleton />}</div>
     </div>
   );
 }
