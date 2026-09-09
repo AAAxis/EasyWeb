@@ -3,12 +3,20 @@
 import { useEffect, useState } from "react";
 import { Button, C, Note, Table, card, input } from "../lib/ui";
 
-// Where numbers come from — one carrier at a time.
+// Two jobs, not two rivals.
 //
-// This is a trunk, not a list of integrations. Two connected at once means
-// every outbound call has a question to answer about which one it leaves by, so
-// the server refuses a second and swapping is disconnect-then-connect: a
-// deliberate moment rather than a silent re-route.
+// Twilio is the dialler: it mints the voice token, holds the browser's WebRTC
+// leg, wakes the phone through push and drives CallKit. Without it there is no
+// softphone on either end — DIDLogic publishes no WebSocket endpoint, so a
+// browser cannot register to it at all.
+//
+// The carrier is where numbers come from, and there is one at a time. That part
+// is a trunk, not a list of integrations: two at once means every outbound call
+// has a question to answer about which one it leaves by, so the server refuses
+// a second and swapping is disconnect-then-connect.
+//
+// Listing them side by side as if you pick one was the confusion this screen
+// used to cause.
 const CARRIERS = {
   didlogic: {
     name: "DIDLogic",
@@ -31,6 +39,7 @@ export default function Integrations({ api, onError }) {
   const [values, setValues] = useState({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [dialler, setDialler] = useState(false);
 
   const load = () => {
     api("/providers")
@@ -42,6 +51,11 @@ export default function Integrations({ api, onError }) {
     // not something to put in front of someone mid-call, so the phone app never
     // requests it.
     api("/providers/balance").then((b) => setBalance(b.balance)).catch(() => setBalance(null));
+    // The dialler is its own question: a workspace can have a carrier and still
+    // not be able to place a call.
+    api("/twilio/account")
+      .then((b) => setDialler(Boolean(b?.connected ?? b?.account_sid)))
+      .catch(() => setDialler(false));
   };
   useEffect(load, [api]);
 
@@ -86,6 +100,28 @@ export default function Integrations({ api, onError }) {
 
   return (
     <>
+      <div style={{ ...card, marginBottom: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Dialler</div>
+          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
+            Twilio carries the app and the browser onto the call. It is separate
+            from where your numbers come from, and both are needed.
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 12px",
+            color: dialler ? C.good : C.bad, background: dialler ? "#E3F7F1" : "#FDECEA",
+          }}
+        >
+          {dialler ? "Connected" : "Not connected"}
+        </span>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.muted, margin: "0 0 8px" }}>
+        Numbers — one carrier at a time
+      </div>
+
       {carrier ? (
         <div style={{ ...card, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
