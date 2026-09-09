@@ -45,7 +45,7 @@ const TRUNK_COLS = [
   )],
 ];
 
-export default function Integrations({ api, onError }) {
+export default function Integrations({ api, onError, signOut }) {
   const [carrier, setCarrier] = useState(undefined); // undefined = loading, null = none
   // The house carrier: the platform's own account, handed to every workspace.
   // Nothing to connect, nothing to disconnect, and no key for anyone to paste.
@@ -263,6 +263,12 @@ export default function Integrations({ api, onError }) {
 
       <div style={{ fontSize: 13, fontWeight: 600, color: C.muted, margin: "18px 0 8px" }}>Numbers</div>
       <Table cols={NUMBER_COLS} rows={numbers} empty="No numbers on this account yet." />
+
+      {signOut ? (
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 16 }}>
+          <Button onClick={signOut} tone="bad">Sign out</Button>
+        </div>
+      ) : null}
     </>
   );
 }

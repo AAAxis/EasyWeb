@@ -10,12 +10,10 @@ import { Mark } from "./Chrome";
 import Landing from "./Landing";
 
 export const TABS = [
-  // Three. The keypad is a button rather than a tab, calls and texts share one
-  // screen, recordings live on the call they belong to, and the float is on
-  // Integrations above what it pays for.
-  ["/", "Dashboard"],
+  // The signed-in product has two destinations. Calls and texts share Activity;
+  // account money, providers, recording preferences and sign-out live together.
   ["/calls", "Activity"],
-  ["/integrations", "Integrations"],
+  ["/integrations", "Settings"],
 ];
 
 /**
@@ -47,6 +45,7 @@ export default function Dashboard({ here, children }) {
   const [error, setError] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [accountBalance, setAccountBalance] = useState(null);
   const api = useVoip(token);
   // Screens take these as props, so they have to keep their identity across
   // renders or every one of them re-fetches whenever anything else changes.
@@ -58,6 +57,17 @@ export default function Dashboard({ here, children }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!token) { setAccountBalance(null); return; }
+    api("/balance")
+      .then((body) => setAccountBalance(body.held?.[0] ?? null))
+      .catch(() => setAccountBalance(null));
+  }, [api, token]);
+
+  const profileLabel = accountBalance
+    ? `${Number(accountBalance.amount).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${accountBalance.currency}`
+    : "Balance";
 
   // `/` doubles as the marketing page and is rendered on the server for people
   // arriving without an account, so it shows the landing until the session says
@@ -109,19 +119,26 @@ export default function Dashboard({ here, children }) {
         <Mark size={30} />
         <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>EasyCall</span>
         <span style={{ flex: 1 }} />
-        {/* Signing out moves into the drawer on a phone rather than sitting
-            beside the button that opens it — two controls in the same corner,
-            one of them ending the session, is a thumb away from a mistake. */}
-        <button
-          className="ec-signout"
-          onClick={signOut}
+        <Link
+          href="/integrations"
+          aria-label={`Open profile and settings. ${profileLabel}`}
           style={{
-            border: `1px solid ${C.border}`, background: "#fff", color: C.muted,
-            borderRadius: 999, padding: "7px 15px", fontSize: 13, cursor: "pointer",
+            border: `1px solid ${here === "/integrations" ? C.text : C.border}`,
+            background: here === "/integrations" ? "#F4F5F7" : "#fff", color: C.text,
+            borderRadius: 999, padding: "4px 11px 4px 5px", fontSize: 12.5,
+            display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600,
           }}
         >
-          Sign out
-        </button>
+          <span style={{
+            width: 26, height: 26, borderRadius: "50%", background: C.text, color: "#fff",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z" />
+            </svg>
+          </span>
+          {profileLabel}
+        </Link>
         {/* On the right, the side the drawer comes from. */}
         <button
           className="ec-burger"
@@ -180,17 +197,6 @@ export default function Dashboard({ here, children }) {
                 </Link>
               );
             })}
-            <span style={{ flex: 1 }} />
-            <button
-              onClick={() => { setMenuOpen(false); signOut(); }}
-              style={{
-                border: "none", borderTop: `1px solid ${C.border}`, background: "transparent",
-                color: C.muted, textAlign: "left", cursor: "pointer",
-                padding: "14px 13px 4px", marginTop: 8, fontSize: 14.5, fontWeight: 500,
-              }}
-            >
-              Sign out
-            </button>
           </aside>
         </>
       ) : null}
@@ -200,7 +206,7 @@ export default function Dashboard({ here, children }) {
           under them is the screen, and 12px read as one block of six pills and
           three tiles. */}
       <div style={{ marginTop: 26 }}>
-        {token ? children({ api, onError }) : <Skeleton />}
+        {token ? children({ api, onError, signOut }) : <Skeleton />}
       </div>
 
       {token ? (

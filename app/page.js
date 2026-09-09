@@ -1,8 +1,8 @@
 "use client";
 
 import Dashboard from "./components/Dashboard";
-import Overview from "./dashboard/screens/Overview";
+import Activity from "./components/Activity";
 
 export default function Home() {
-  return <Dashboard here="/">{(props) => <Overview {...props} />}</Dashboard>;
+  return <Dashboard here="/calls">{(props) => <Activity initial="calls" {...props} />}</Dashboard>;
 }
