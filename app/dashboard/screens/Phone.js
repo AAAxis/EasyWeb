@@ -16,8 +16,30 @@ import { Button, C, Note, card, input } from "../lib/ui";
 // call, logged the same way.
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
+// How long a press on 0 has to last to mean +. The same gesture every phone
+// keypad uses, so it needs no explaining — but it does need labelling, which is
+// the small + under the 0.
+const HOLD_MS = 450;
+
+/**
+ * E.164, or as close as the digits allow.
+ *
+ * Twilio rejects anything else, and it rejects it after the call has been
+ * placed — so a number typed without a country code failed silently, as a dead
+ * call rather than as a message. The phone app has normalised for a while; the
+ * browser was dialling whatever was in the box.
+ */
+const normalize = (input) => {
+  const digits = String(input ?? "").trim().replace(/[^\d+]/g, "");
+  if (!digits) return "";
+  return digits.startsWith("+") ? digits : `+${digits.replace(/^0+/, "")}`;
+};
+
 export default function Phone({ api, onError }) {
   const [number, setNumber] = useState("");
+  // Set while a press on 0 is being held, and cleared by the press that
+  // follows — so the release that produced a + does not also type a 0.
+  const hold = useRef(null);
   const [state, setState] = useState("loading"); // loading | ready | calling | on | error
   const [incoming, setIncoming] = useState(null);
   const [muted, setMuted] = useState(false);
@@ -100,7 +122,7 @@ export default function Phone({ api, onError }) {
   };
 
   const dial = async () => {
-    const to = number.trim();
+    const to = normalize(number);
     if (!to || !device.current) return;
     setState("calling");
     setNote(null);
@@ -157,18 +179,45 @@ export default function Phone({ api, onError }) {
         />
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, margin: "10px 0 16px" }}>
-          {KEYS.map((k) => (
-            <button
-              key={k}
-              onClick={() => (state === "on" ? call.current?.sendDigits(k) : setNumber((n) => n + k))}
-              style={{
-                border: `1px solid ${C.border}`, background: "#fff", borderRadius: 12,
-                padding: "14px 0", fontSize: 19, fontWeight: 600, color: C.text, cursor: "pointer",
-              }}
-            >
-              {k}
-            </button>
-          ))}
+          {KEYS.map((k) => {
+            // Holding 0 types +, as it does on a phone. In a call the keypad is
+            // sending DTMF, where + is not a tone and the hold means nothing.
+            const holds = k === "0" && state !== "on";
+            const press = () => {
+              if (state === "on") { call.current?.sendDigits(k); return; }
+              if (hold.current === "used") { hold.current = null; return; }
+              setNumber((n) => n + k);
+            };
+            return (
+              <button
+                key={k}
+                onClick={press}
+                onPointerDown={holds ? () => {
+                  hold.current = setTimeout(() => {
+                    hold.current = "used";
+                    setNumber((n) => (n.includes("+") ? n : `+${n}`));
+                  }, HOLD_MS);
+                } : undefined}
+                onPointerUp={holds ? () => {
+                  if (hold.current && hold.current !== "used") clearTimeout(hold.current);
+                } : undefined}
+                onPointerLeave={holds ? () => {
+                  if (hold.current && hold.current !== "used") { clearTimeout(hold.current); hold.current = null; }
+                } : undefined}
+                onContextMenu={holds ? (e) => e.preventDefault() : undefined}
+                style={{
+                  border: `1px solid ${C.border}`, background: "#fff", borderRadius: 12,
+                  padding: holds ? "8px 0 6px" : "14px 0", fontSize: 19, fontWeight: 600,
+                  color: C.text, cursor: "pointer", userSelect: "none", touchAction: "manipulation",
+                }}
+              >
+                {k}
+                {holds ? (
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: C.faint, marginTop: -1 }}>+</div>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
 
         {state === "on" || state === "calling" ? (
