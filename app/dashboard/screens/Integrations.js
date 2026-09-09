@@ -33,18 +33,15 @@ const CARRIERS = {
 const money = (value) =>
   value === null || value === undefined ? "—" : `$${Number(value).toFixed(2)}`;
 
-// Everything that carries a call, in one table: the dialler and the carrier's
-// trunks, each against the balance that pays for it. They were two figures in
-// two cards, which is two places to look for the same question — what is left,
-// and on which account.
+// Everything that carries a call, in one table: a row per trunk, against the
+// balance that pays for it. They were two figures in two cards, which is two
+// places to look for the same question — what is left, and on which account.
 const TRUNK_COLS = [
   ["Trunk", (r) => r.name],
-  ["Carrier", (r) => r.carrier],
-  ["Caller ID", (r) => r.callerId || "—"],
   ["Balance", (r) => (
-    r.shared
-      ? <span style={{ color: C.faint }}>same account</span>
-      : <span style={{ fontWeight: 600, color: r.balance !== null && r.balance < 5 ? C.bad : C.text }}>{money(r.balance)}</span>
+    <span style={{ fontWeight: 600, color: r.balance !== null && r.balance < 5 ? C.bad : C.text }}>
+      {money(r.balance)}
+    </span>
   )],
 ];
 
@@ -55,7 +52,6 @@ export default function Integrations({ api, onError }) {
   const [managed, setManaged] = useState(false);
   const [choices, setChoices] = useState(["twilio"]);
   const [numbers, setNumbers] = useState(null);
-  const [trunks, setTrunks] = useState([]);
   const [balance, setBalance] = useState(null);
   // Twilio's own figure, kept apart from the carrier's — two accounts, two
   // balances, and running one down does nothing for the other.
@@ -74,7 +70,6 @@ export default function Integrations({ api, onError }) {
       })
       .catch((e) => { setCarrier(null); onError(e.message); });
     api("/numbers").then((b) => setNumbers(b.numbers ?? [])).catch(() => setNumbers([]));
-    api("/providers/trunks").then((b) => setTrunks(b.trunks ?? [])).catch(() => setTrunks([]));
     // Balance is asked for here and nowhere else: it is an operator's number,
     // not something to put in front of someone mid-call, so the phone app never
     // requests it.
@@ -160,63 +155,33 @@ export default function Integrations({ api, onError }) {
     }],
   ];
 
-  // Twilio first: it is what holds the call up, whoever carries it. Then the
-  // carrier's trunks, which share one account balance between them — so the
-  // figure goes on the first and the rest say so, rather than repeating into a
-  // total that does not exist.
-  const primary = numbers?.find((n) => n.is_primary)?.phone_number ?? numbers?.[0]?.phone_number ?? null;
+  // A row per trunk, and the carrier is one trunk however many SIP accounts sit
+  // on it — the balance belongs to the account, so a row each would repeat one
+  // figure into a total that does not exist.
   const trunkRows = [
-    ...(dialTwilio === null ? [] : [{
-      id: "twilio", name: "Dialler", carrier: "Twilio",
-      callerId: primary, balance: dialTwilio, shared: false,
-    }]),
-    ...trunks.map((t, i) => ({
-      id: `dl-${t.id}`, name: t.label || `Trunk ${t.id}`,
-      carrier: carrier?.provider === "didlogic" ? "DIDLogic" : (carrier?.provider ?? "Carrier"),
-      callerId: t.callerId, balance: i === 0 ? balance : null, shared: i > 0,
-    })),
+    ...(dialTwilio === null ? [] : [{ id: "twilio", name: "Twilio", balance: dialTwilio }]),
+    ...(carrier ? [{
+      id: "carrier",
+      name: carrier.provider === "didlogic" ? "DIDLogic" : (carrier.label ?? carrier.provider),
+      balance,
+    }] : []),
   ];
-  const sharedBalance = trunkRows.some((r) => r.shared);
 
   return (
     <>
-      <div style={{ ...card, marginBottom: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Dialler</div>
-          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
-            Twilio carries the app and the browser onto the call. It is separate
-            from where your numbers come from, and both are needed.
-          </div>
-        </div>
-      </div>
-
-      <div style={{ fontSize: 13, fontWeight: 600, color: C.muted, margin: "0 0 8px" }}>
-        Numbers — one carrier at a time
-      </div>
-
+      {/* No cards describing the dialler and the carrier. The table below names
+          both and says what is left on each, which is what the prose was
+          circling. What stays is what you can act on: disconnecting a carrier
+          you connected, and connecting one when there is none. */}
       {carrier ? (
-        <div style={{ ...card, marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
-                {managed ? "Numbers" : (carrier.label ?? carrier.provider)}
-              </div>
-              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
-                {managed || !carrier.connected_at
-                  ? "Calls and texts go out through this."
-                  : `Connected ${new Date(carrier.connected_at).toLocaleDateString()} · calls and texts go out through this.`}
-              </div>
+        managed ? null : (
+          <div style={{ ...card, marginBottom: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200, fontSize: 15, fontWeight: 700, color: C.text }}>
+              {carrier.label ?? carrier.provider}
             </div>
-            {managed ? null : (
-              <Button onClick={disconnect} disabled={busy} tone="bad">Disconnect</Button>
-            )}
+            <Button onClick={disconnect} disabled={busy} tone="bad">Disconnect</Button>
           </div>
-          <div style={{ fontSize: 12, color: C.faint, marginTop: 12 }}>
-            {managed
-              ? "Included with your account — your numbers and calls come through it."
-              : "One carrier at a time. Disconnect this to connect another."}
-          </div>
-        </div>
+        )
       ) : (
         <div style={{ ...card, marginBottom: 12 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Connect a carrier</div>
@@ -268,12 +233,6 @@ export default function Integrations({ api, onError }) {
         <>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.muted, margin: "18px 0 8px" }}>Trunks</div>
           <Table cols={TRUNK_COLS} rows={trunkRows} />
-          {sharedBalance ? (
-            <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>
-              A carrier&apos;s balance belongs to its account, not to each trunk on it — shown once
-              so several trunks do not read as several balances.
-            </div>
-          ) : null}
         </>
       ) : null}
 
