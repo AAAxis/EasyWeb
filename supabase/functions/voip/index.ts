@@ -57,12 +57,27 @@ const router = new Router();
 // Calls
 // ---------------------------------------------------------------------------
 
-// Which carrier this workspace is on, if any.
+// Which carrier this workspace is on.
+//
+// DIDLogic is the house carrier: it is the platform's account, not something a
+// workspace connects, so its key lives in the environment and every workspace
+// gets it without being asked. A row only exists when there is something
+// workspace-specific to remember — which number is active, or a Twilio account
+// of their own — and the key is read from the row only if it has one.
 async function carrierFor(orgId: number) {
   const [row] = await sql`
     select provider, credentials, active_number from app_private.number_providers
      where org_id = ${orgId}`;
-  return row ?? null;
+  const house = Deno.env.get("DIDLOGIC_API_KEY") ?? "";
+  if (!row) {
+    return house
+      ? { provider: "didlogic", credentials: { api_key: house }, active_number: null, managed: true }
+      : null;
+  }
+  if (row.provider === "didlogic" && !(row.credentials as { api_key?: string })?.api_key) {
+    return { ...row, credentials: { api_key: house }, managed: true };
+  }
+  return { ...row, managed: false };
 }
 
 /** `"dima" <6531061544>` — the label is theirs, the number is the part we want. */
@@ -230,11 +245,16 @@ router.add("POST /providers/active", async ({ req }) => {
   requireAdmin(ctx);
   const body = await readJson<{ number?: string | null }>(req);
   const number = body.number === null ? null : String(body.number ?? "").trim() || null;
+  const carrier = await carrierFor(ctx.orgId);
+  if (!carrier) throw new HttpError(409, "No carrier connected", "NO_PROVIDER");
+  // A workspace on the house carrier has no row until it wants something
+  // remembered. This is that moment — and the key stays out of it, because it
+  // belongs to the platform.
   const [row] = await sql`
-    update app_private.number_providers set active_number = ${number}
-     where org_id = ${ctx.orgId}
+    insert into app_private.number_providers (org_id, provider, credentials, label, active_number, connected_by)
+    values (${ctx.orgId}, ${carrier.provider}, '{}'::jsonb, 'Included', ${number}, ${actor.uid})
+    on conflict (org_id) do update set active_number = excluded.active_number
     returning provider, label, connected_at, active_number`;
-  if (!row) throw new HttpError(409, "No carrier connected", "NO_PROVIDER");
   return json({ provider: row });
 });
 
@@ -270,7 +290,17 @@ router.add("GET /providers", async ({ req }) => {
   const [row] = await sql`
     select provider, label, connected_at, active_number from app_private.number_providers
      where org_id = ${ctx.orgId}`;
-  return json({ provider: row ?? null, choices: PROVIDERS });
+  const carrier = await carrierFor(ctx.orgId);
+  return json({
+    provider: row ?? (carrier
+      ? { provider: carrier.provider, label: "Included", connected_at: null, active_number: null }
+      : null),
+    // Managed means the platform's own account: nothing to connect, nothing to
+    // disconnect, and no key for anyone to paste.
+    managed: Boolean(carrier?.managed),
+    // Only what a workspace can actually bring itself.
+    choices: PROVIDERS.filter((name) => name !== "didlogic"),
+  });
 });
 
 router.add("POST /providers", async ({ req }) => {
@@ -334,22 +364,20 @@ router.add("DELETE /providers", async ({ req }) => {
 router.add("GET /providers/balance", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
-  const [row] = await sql`
-    select provider, credentials from app_private.number_providers where org_id = ${ctx.orgId}`;
-  if (!row) throw new HttpError(409, "No carrier connected", "NO_PROVIDER");
-  if (row.provider !== "didlogic") return json({ balance: null, provider: row.provider });
-  const key = (row.credentials as { api_key?: string })?.api_key ?? "";
-  return json({ provider: row.provider, balance: await didlogic.balance(key) });
+  const carrier = await carrierFor(ctx.orgId);
+  if (!carrier) throw new HttpError(409, "No carrier connected", "NO_PROVIDER");
+  if (carrier.provider !== "didlogic") return json({ balance: null, provider: carrier.provider });
+  const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
+  return json({ provider: carrier.provider, balance: await didlogic.balance(key) });
 });
 
 // The trunks calls leave by, for the carrier that has them.
 router.add("GET /providers/trunks", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
-  const [row] = await sql`
-    select provider, credentials from app_private.number_providers where org_id = ${ctx.orgId}`;
-  if (!row || row.provider !== "didlogic") return json({ trunks: [] });
-  const key = (row.credentials as { api_key?: string })?.api_key ?? "";
+  const carrier = await carrierFor(ctx.orgId);
+  if (carrier?.provider !== "didlogic") return json({ trunks: [] });
+  const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
   return json({ trunks: await didlogic.sipAccounts(key) });
 });
 
@@ -401,8 +429,7 @@ router.add("GET /numbers", async ({ req }) => {
 
   // The same question, whichever carrier is connected: what numbers do I have?
   // A caller should not have to know who sells them.
-  const [carrier] = await sql`
-    select provider, credentials from app_private.number_providers where org_id = ${ctx.orgId}`;
+  const carrier = await carrierFor(ctx.orgId);
   if (carrier?.provider === "didlogic") {
     const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
     const held = await didlogic.numbers(key);

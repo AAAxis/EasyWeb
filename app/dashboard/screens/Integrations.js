@@ -32,10 +32,14 @@ const CARRIERS = {
 
 export default function Integrations({ api, onError }) {
   const [carrier, setCarrier] = useState(undefined); // undefined = loading, null = none
+  // The house carrier: the platform's own account, handed to every workspace.
+  // Nothing to connect, nothing to disconnect, and no key for anyone to paste.
+  const [managed, setManaged] = useState(false);
+  const [choices, setChoices] = useState(["twilio"]);
   const [numbers, setNumbers] = useState(null);
   const [trunks, setTrunks] = useState([]);
   const [balance, setBalance] = useState(null);
-  const [choice, setChoice] = useState("didlogic");
+  const [choice, setChoice] = useState("twilio");
   const [values, setValues] = useState({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
@@ -43,7 +47,11 @@ export default function Integrations({ api, onError }) {
 
   const load = () => {
     api("/providers")
-      .then((b) => setCarrier(b.provider ?? null))
+      .then((b) => {
+        setCarrier(b.provider ?? null);
+        setManaged(Boolean(b.managed));
+        if (b.choices?.length) setChoices(b.choices);
+      })
       .catch((e) => { setCarrier(null); onError(e.message); });
     api("/numbers").then((b) => setNumbers(b.numbers ?? [])).catch(() => setNumbers([]));
     api("/providers/trunks").then((b) => setTrunks(b.trunks ?? [])).catch(() => setTrunks([]));
@@ -159,9 +167,13 @@ export default function Integrations({ api, onError }) {
         <div style={{ ...card, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{carrier.label ?? carrier.provider}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
+                {managed ? "Numbers" : (carrier.label ?? carrier.provider)}
+              </div>
               <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
-                Connected {new Date(carrier.connected_at).toLocaleDateString()} · calls and texts go out through this.
+                {managed || !carrier.connected_at
+                  ? "Calls and texts go out through this."
+                  : `Connected ${new Date(carrier.connected_at).toLocaleDateString()} · calls and texts go out through this.`}
               </div>
             </div>
             {balance !== null && balance !== undefined ? (
@@ -174,10 +186,14 @@ export default function Integrations({ api, onError }) {
                 </div>
               </div>
             ) : null}
-            <Button onClick={disconnect} disabled={busy} tone="bad">Disconnect</Button>
+            {managed ? null : (
+              <Button onClick={disconnect} disabled={busy} tone="bad">Disconnect</Button>
+            )}
           </div>
           <div style={{ fontSize: 12, color: C.faint, marginTop: 12 }}>
-            One carrier at a time. Disconnect this to connect another.
+            {managed
+              ? "Included with your account — your numbers and calls come through it."
+              : "One carrier at a time. Disconnect this to connect another."}
           </div>
         </div>
       ) : (
@@ -188,7 +204,7 @@ export default function Integrations({ api, onError }) {
           </div>
 
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-            {Object.entries(CARRIERS).map(([key, c]) => (
+            {Object.entries(CARRIERS).filter(([key]) => choices.includes(key)).map(([key, c]) => (
               <button
                 key={key}
                 onClick={() => { setChoice(key); setValues({}); }}
