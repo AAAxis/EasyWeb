@@ -14,6 +14,7 @@ export const TABS = [
   ["/calls", "Calls"],
   ["/sms", "SMS"],
   ["/recordings", "Recordings"],
+  ["/balance", "Balance"],
   ["/integrations", "Integrations"],
 ];
 

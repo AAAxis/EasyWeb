@@ -33,6 +33,7 @@ import { calls, conversations, recordings } from "../_shared/activity.ts";
 import { playbackUrl, recordingConfigured, removeObject } from "../_shared/providers/recordings.ts";
 import { voiceProvider } from "../_shared/providers/voice.ts";
 import * as didlogic from "../_shared/providers/didlogic.ts";
+import * as oxapay from "../_shared/providers/oxapay.ts";
 import { broadcast, broadcastToOrg } from "../_shared/realtime.ts";
 import { sql } from "../_shared/db.ts";
 
@@ -369,6 +370,41 @@ router.add("GET /providers/balance", async ({ req }) => {
   if (carrier.provider !== "didlogic") return json({ balance: null, provider: carrier.provider });
   const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
   return json({ provider: carrier.provider, balance: await didlogic.balance(key) });
+});
+
+// ---------------------------------------------------------------------------
+// Balance
+//
+// The crypto float, read straight from OxaPay. There is no wallet table behind
+// this: OxaPay holds the money and the history of it, and a second copy here
+// would be a second thing to keep true.
+//
+// One OxaPay account stands behind the whole install — the key is an
+// environment secret, not a per-workspace credential like the carrier's. So
+// this is the operator's own float, and the same figure whoever asks. That is
+// correct while EasyCall is one operator's console, and is the thing to revisit
+// first if it ever is not.
+// ---------------------------------------------------------------------------
+
+router.add("GET /balance", async ({ req }) => {
+  const actor = await requireUser(req);
+  await requireOrg(actor, req);
+  if (!oxapay.configured()) return json({ connected: false, held: [] });
+  return json({ connected: true, ...(await oxapay.balance()) });
+});
+
+// Mints a hosted OxaPay page and hands back its URL. The payer chooses the coin
+// there; nothing on this side needs to know which, or to hear how it went — the
+// money lands in the account the balance route reads.
+router.add("POST /balance/topup", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  const body = await readJson(req);
+  const invoice = await oxapay.topUp(Number(body.amount), {
+    orgId: ctx.orgId,
+    returnUrl: body.return_url,
+  });
+  return json(invoice, 201);
 });
 
 // The trunks calls leave by, for the carrier that has them.
