@@ -1,8 +1,8 @@
 "use client";
 
 import Dashboard from "../components/Dashboard";
-import Integrations from "../dashboard/screens/Integrations";
+import Account from "../components/Account";
 
 export default function Page() {
-  return <Dashboard here="/integrations">{(props) => <Integrations {...props} />}</Dashboard>;
+  return <Dashboard here="/integrations">{(props) => <Account {...props} />}</Dashboard>;
 }

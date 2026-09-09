@@ -14,7 +14,7 @@ export const TABS = [
   ["/calls", "Calls"],
   ["/sms", "SMS"],
   ["/recordings", "Recordings"],
-  ["/balance", "Balance"],
+  // No Balance tab: the float is on Integrations, above what it pays for.
   ["/integrations", "Integrations"],
 ];
 
