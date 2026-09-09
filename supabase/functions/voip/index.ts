@@ -35,6 +35,13 @@ import { voiceProvider } from "../_shared/providers/voice.ts";
 import { broadcast, broadcastToOrg } from "../_shared/realtime.ts";
 import { sql } from "../_shared/db.ts";
 
+// An optional positive number off the query string — a cursor, a contact id.
+// Anything else reads as "not given" rather than as zero.
+const int = (value: string | null | undefined): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
 // A path segment that has to be a number. Router params arrive as strings, and
 // a bad one belongs in a 400 rather than in a query.
 const requireInt = (value: string, what: string): number => {
