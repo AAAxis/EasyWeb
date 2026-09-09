@@ -1,77 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { SignIn, useSession } from "./dashboard/lib/auth";
-import { useVoip } from "./dashboard/lib/api";
-import { C, Note } from "./dashboard/lib/ui";
+import Dashboard from "./components/Dashboard";
 import Overview from "./dashboard/screens/Overview";
-import Calls from "./dashboard/screens/Calls";
-import Sms from "./dashboard/screens/Sms";
-import Recordings from "./dashboard/screens/Recordings";
-import Integrations from "./dashboard/screens/Integrations";
-import Landing from "./components/Landing";
 
-const TABS = [
-  ["overview", "Dashboard", Overview],
-  ["calls", "Calls", Calls],
-  ["sms", "SMS", Sms],
-  ["recordings", "Recordings", Recordings],
-  ["integrations", "Integrations", Integrations],
-];
-
-export default function Dashboard() {
-  const { token, ready, signIn, signOut } = useSession();
-  const [tab, setTab] = useState("overview");
-  const [error, setError] = useState(null);
-  const api = useVoip(token);
-  // Screens take this as a prop, so it has to keep its identity across renders
-  // or every one of them re-fetches on every keystroke elsewhere.
-  const onError = useCallback((message) => setError(message), []);
-
-  // The landing is what the server renders and what a visitor sees first,
-  // rather than a skeleton that resolves into it: almost everyone arriving here
-  // is signed out, and a public page whose content only exists after hydration
-  // is a blank page to anything that does not run JavaScript.
-  //
-  // Signed out, it says what this is and takes you in at the same time — side
-  // by side, not on two URLs.
-  if (!ready || !token) return <Landing onSignIn={signIn} />;
-
-  const Screen = (TABS.find(([key]) => key === tab) ?? TABS[0])[2];
-
-  return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 20px 60px" }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>EasyCall</div>
-        <button
-          onClick={signOut}
-          style={{ marginLeft: "auto", border: `1px solid ${C.border}`, background: C.surface, color: C.muted, borderRadius: 999, padding: "6px 14px", fontSize: 12.5, cursor: "pointer" }}
-        >
-          Sign out
-        </button>
-      </header>
-
-      <nav style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
-        {TABS.map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => { setTab(key); setError(null); }}
-            style={{
-              border: `1px solid ${tab === key ? "#111317" : C.border}`,
-              background: tab === key ? "#111317" : C.surface,
-              color: tab === key ? "#fff" : C.text,
-              borderRadius: 999, padding: "7px 15px", fontSize: 13, fontWeight: 500, cursor: "pointer",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      <Note tone="bad">{error}</Note>
-      <div style={{ marginTop: 12 }}>
-        <Screen api={api} onError={onError} />
-      </div>
-    </div>
-  );
+export default function Home() {
+  return <Dashboard here="/">{(props) => <Overview {...props} />}</Dashboard>;
 }

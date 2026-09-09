@@ -276,33 +276,73 @@ Deno.serve(async (req) => {
         const duration = Number(params.CallDuration ?? params.DialCallDuration ?? 0);
         const status = (params.CallStatus ?? params.DialCallStatus ?? "completed").toLowerCase();
 
-        const owner = await sql`
-          select pn.org_id, pn.user_id from app_private.phone_numbers pn
-           where pn.phone_number in (${to}, ${from})
-           limit 1
-        `;
+        // Who this call belongs to.
+        //
+        // Matching To/From against our own numbers only ever worked for inbound
+        // calls. A call the app places arrives here as From="client:<uid>" and
+        // To=<whoever was dialled> — neither is a number we own, so this bailed
+        // and logged nothing, and every outbound call stayed at the app's
+        // optimistic row: in_progress, no duration, forever.
+        const uid = from.startsWith("client:") ? from.slice("client:".length) : null;
+        const owner = uid
+          ? await sql`
+              select org_id, user_id from app_private.org_members
+               where user_id = ${uid} limit 1
+            `
+          : await sql`
+              select pn.org_id, pn.user_id from app_private.phone_numbers pn
+               where pn.phone_number in (${to}, ${from})
+               limit 1
+            `;
 
         if (owner.length > 0) {
           const orgId = Number(owner[0].org_id);
-          const direction = params.Direction?.startsWith("inbound") ? "inbound" : "outbound";
+          const direction = uid || !params.Direction?.startsWith("inbound") ? "outbound" : "inbound";
           const other = direction === "inbound" ? from : to;
           const match = await contacts.findByPhone(orgId, other);
+          const settled = ["completed", "busy", "failed", "no-answer", "canceled"].includes(status)
+            ? status.replace("-", "_")
+            : "completed";
+          const seconds = Number.isFinite(duration) ? duration : 0;
 
-          await calls.log(orgId, owner[0].user_id as string, {
-            direction,
-            from_number: from,
-            to_number: to,
-            status: ["completed", "busy", "failed", "no-answer", "canceled"].includes(status)
-              ? status.replace("-", "_")
-              : "completed",
-            duration_seconds: Number.isFinite(duration) ? duration : 0,
-            provider_call_sid: sid,
-            contact_id: match?.id ?? null,
-            ended_at: new Date(),
-          }).catch((error) => {
-            // A duplicate sid means Twilio retried a callback we already stored.
-            if (!String(error?.message ?? "").includes("calls_provider_sid_idx")) throw error;
-          });
+          // The app writes a row the moment it dials, so the call shows up
+          // before it connects. This is that row growing up — the same call,
+          // finished — rather than a second one beside it.
+          const [reconciled] = await sql`
+            update app_private.calls
+               set status = ${settled},
+                   duration_seconds = ${seconds},
+                   ended_at = now(),
+                   provider_call_sid = coalesce(provider_call_sid, ${sid}),
+                   from_number = coalesce(from_number, ${uid ? null : from}),
+                   contact_id = coalesce(contact_id, ${match?.id ?? null})
+             where id = (
+               select id from app_private.calls
+                where org_id = ${orgId}
+                  and status = 'in_progress'
+                  and to_number = ${to}
+                  and started_at > now() - interval '6 hours'
+                order by id desc limit 1
+             )
+            returning id`;
+
+          // Nothing to grow up: an inbound call, or one placed from somewhere
+          // that never announced itself.
+          if (!reconciled) {
+            await calls.log(orgId, owner[0].user_id as string, {
+              direction,
+              from_number: from,
+              to_number: to,
+              status: settled,
+              duration_seconds: seconds,
+              provider_call_sid: sid,
+              contact_id: match?.id ?? null,
+              ended_at: new Date(),
+            }).catch((error) => {
+              // A duplicate sid means Twilio retried a callback we already stored.
+              if (!String(error?.message ?? "").includes("calls_provider_sid_idx")) throw error;
+            });
+          }
         }
 
         return xml("<Response/>");
