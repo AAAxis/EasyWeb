@@ -91,11 +91,44 @@ export default function Integrations({ api, onError }) {
 
   if (carrier === undefined) return <div style={card}>Loading…</div>;
 
+  const bare = (n) => String(n ?? "").replace(/^\+/, "");
+  const active = bare(carrier?.active_number);
+
+  const setActive = async (number) => {
+    try {
+      const b = await api("/providers/active", {
+        method: "POST",
+        body: JSON.stringify({ number: bare(number) === active ? null : number }),
+      });
+      setCarrier(b.provider);
+    } catch (e) {
+      onError(e.message);
+    }
+  };
+
+  // Which number the history screens are about. With one number there is
+  // nothing to choose, so it reads as a state rather than a control.
   const NUMBER_COLS = [
     ["Number", (r) => r.phone_number],
     ["Where", (r) => r.label ?? "—"],
     ["Channels", (r) => r.channels ?? "—"],
     ["Status", (r) => (r.verified === false ? "Unverified" : "Ready")],
+    ["", (r) => {
+      const on = bare(r.phone_number) === active;
+      return (
+        <button
+          onClick={() => setActive(r.phone_number)}
+          style={{
+            border: `1px solid ${on ? C.good : C.border}`,
+            background: on ? "#E3F7F1" : "#fff",
+            color: on ? C.good : C.muted,
+            borderRadius: 999, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          {on ? "In use" : "Use this"}
+        </button>
+      );
+    }],
   ];
 
   return (

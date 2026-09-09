@@ -60,7 +60,8 @@ const router = new Router();
 // Which carrier this workspace is on, if any.
 async function carrierFor(orgId: number) {
   const [row] = await sql`
-    select provider, credentials from app_private.number_providers where org_id = ${orgId}`;
+    select provider, credentials, active_number from app_private.number_providers
+     where org_id = ${orgId}`;
   return row ?? null;
 }
 
@@ -86,9 +87,17 @@ router.add("GET /calls", async ({ req, query }) => {
     // account, and every call it placed was labelled inbound.
     const [rows, held] = await Promise.all([didlogic.calls(key), didlogic.numbers(key).catch(() => [])]);
     const owned = new Set(held.map((n) => String(n.number).replace(/^\+/, "")));
+    // Narrowed to the number being worked on, when one is chosen. Comparing
+    // without the leading + because the carrier is inconsistent about it.
+    const active = String(carrier.active_number ?? "").replace(/^\+/, "");
+    const mine = active
+      ? rows.filter((c) =>
+        bareNumber(c.from).replace(/^\+/, "") === active || bareNumber(c.to).replace(/^\+/, "") === active)
+      : rows;
     return json({
       source: "didlogic",
-      calls: rows.map((c, i) => {
+      active_number: carrier.active_number ?? null,
+      calls: mine.map((c, i) => {
         const from = bareNumber(c.from);
         const to = bareNumber(c.to);
         const seconds = Number(c.duration ?? 0);
@@ -210,6 +219,25 @@ router.add("DELETE /twilio/account", async ({ req }) => {
 
 // Numbers already sitting in the connected account, ready to import.
 
+// The number this workspace is working on.
+//
+// A carrier account can hold several, and history is only useful when it is
+// about one of them: "my calls" means calls on the number I am using, not every
+// call the account ever carried.
+router.add("POST /providers/active", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  requireAdmin(ctx);
+  const body = await readJson<{ number?: string | null }>(req);
+  const number = body.number === null ? null : String(body.number ?? "").trim() || null;
+  const [row] = await sql`
+    update app_private.number_providers set active_number = ${number}
+     where org_id = ${ctx.orgId}
+    returning provider, label, connected_at, active_number`;
+  if (!row) throw new HttpError(409, "No carrier connected", "NO_PROVIDER");
+  return json({ provider: row });
+});
+
 // Texts the carrier has a record of, for the SMS screen.
 router.add("GET /providers/sms", async ({ req }) => {
   const actor = await requireUser(req);
@@ -217,7 +245,12 @@ router.add("GET /providers/sms", async ({ req }) => {
   const carrier = await carrierFor(ctx.orgId);
   if (carrier?.provider !== "didlogic") return json({ messages: [] });
   const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
-  return json({ messages: await didlogic.sms(key) });
+  const active = String(carrier.active_number ?? "").replace(/^\+/, "");
+  const all = await didlogic.sms(key);
+  const mine = active
+    ? all.filter((m) => JSON.stringify(m).includes(active))
+    : all;
+  return json({ messages: mine, active_number: carrier.active_number ?? null });
 });
 
 // ---------------------------------------------------------------------------
@@ -235,7 +268,7 @@ router.add("GET /providers", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
   const [row] = await sql`
-    select provider, label, connected_at from app_private.number_providers
+    select provider, label, connected_at, active_number from app_private.number_providers
      where org_id = ${ctx.orgId}`;
   return json({ provider: row ?? null, choices: PROVIDERS });
 });
