@@ -11,43 +11,16 @@ import Phone from "../dashboard/screens/Phone";
  * that misses calls, because the SDK only registers while its screen is
  * mounted. Together, the keypad is always live.
  *
- * The phone keeps its own column and a fixed-ish width because it is a
- * control, not a report: the stats reflow, the keypad does not. Under 860px
- * the columns stack, phone first — on a narrow screen the thing you touch
- * should not be below the thing you read.
- *
- * A grid rather than a wrapping flex row. `flex-wrap: wrap-reverse` gets the
- * keypad above the stats when they stack, but it does it by reversing the
- * cross axis — which also turns `align-items: flex-start` into *bottom*, and
- * the stats sank to sit level with the foot of the keypad, a hand's height of
- * blank above them. Stacking order is a job for `order` in a media query; it
- * should not be paid for with the alignment of the row.
+ * Stacked rather than side by side, and in that order: the numbers are a
+ * glance, the keypad is the work. A strip of figures across the top reads in
+ * one pass and then gets out of the way, which is why `Overview` draws itself
+ * small here — four tiles the height of a line of text, not four cards.
  */
 export default function Console(props) {
   return (
-    <>
-      <style>{`
-        .ec-console {
-          display: grid;
-          /* 360px matches the keypad card's own max width, so the column and
-             the card agree rather than leaving a strip of dead grid beside it. */
-          grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
-          gap: 16px;
-          align-items: start;
-        }
-        @media (max-width: 860px) {
-          .ec-console { grid-template-columns: minmax(0, 1fr); }
-          .ec-console > .ec-console-phone { order: -1; }
-        }
-      `}</style>
-      <div className="ec-console">
-        <div style={{ minWidth: 0 }}>
-          <Overview {...props} />
-        </div>
-        <div className="ec-console-phone" style={{ minWidth: 0 }}>
-          <Phone {...props} />
-        </div>
-      </div>
-    </>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Overview {...props} compact />
+      <Phone {...props} />
+    </div>
   );
 }

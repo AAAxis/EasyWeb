@@ -6,7 +6,12 @@ import { C, Skeleton, card, dur } from "../lib/ui";
 // Four numbers, from what the other tabs already load. No separate stats
 // endpoint: counting rows the dashboard is fetching anyway beats a query that
 // can disagree with the list under it.
-export default function Overview({ api, onError }) {
+/**
+ * `compact` is for the console, where these numbers sit above the keypad and
+ * are a glance rather than the subject: same four figures, at the height of a
+ * line of text instead of four full cards.
+ */
+export default function Overview({ api, onError, compact = false }) {
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
@@ -44,12 +49,28 @@ export default function Overview({ api, onError }) {
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 120 : 180}px, 1fr))`,
+        gap: compact ? 8 : 12,
+      }}
+    >
       {tiles.map(([label, value, sub]) => (
-        <div key={label} style={card}>
+        <div key={label} style={compact ? { ...card, padding: "9px 12px" } : card}>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: C.faint, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", margin: "6px 0 2px" }}>{value}</div>
-          <div style={{ fontSize: 12.5, color: C.muted }}>{sub}</div>
+          <div
+            style={{
+              fontSize: compact ? 19 : 28,
+              fontWeight: 700, color: C.text, letterSpacing: "-0.02em",
+              margin: compact ? "2px 0 0" : "6px 0 2px",
+            }}
+          >
+            {value}
+          </div>
+          {/* The sub-line is the first thing to go when these are a glance:
+              four of them under four numbers is a paragraph, not a strip. */}
+          {compact ? null : <div style={{ fontSize: 12.5, color: C.muted }}>{sub}</div>}
         </div>
       ))}
     </div>
