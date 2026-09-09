@@ -17,9 +17,8 @@ export default function Overview({ api, onError, compact = false }) {
   useEffect(() => {
     (async () => {
       try {
-        const [calls, recordings, numbers, threads] = await Promise.all([
+        const [calls, numbers, threads] = await Promise.all([
           api("/calls?limit=100").catch(() => ({ calls: [] })),
-          api("/recordings?limit=100").catch(() => ({ recordings: [] })),
           api("/numbers").catch(() => ({ numbers: [] })),
           api("/conversations?limit=50").catch(() => ({ conversations: [] })),
         ]);
@@ -29,7 +28,6 @@ export default function Overview({ api, onError, compact = false }) {
           calls: list.length,
           recent: list.filter((c) => new Date(c.started_at ?? c.created_at ?? 0).getTime() > week).length,
           minutes: list.reduce((sum, c) => sum + (Number(c.duration_seconds) || 0), 0),
-          recordings: (recordings.recordings ?? []).length,
           numbers: (numbers.numbers ?? []).length,
           threads: (threads.conversations ?? []).filter((c) => c.channel !== "whatsapp").length,
         });
@@ -44,7 +42,6 @@ export default function Overview({ api, onError, compact = false }) {
   const tiles = [
     ["Calls", stats.calls, `${stats.recent} this week`],
     ["Talk time", dur(stats.minutes), "across every call"],
-    ["Recordings", stats.recordings, "stored"],
     ["Numbers", stats.numbers, stats.threads === 1 ? "1 text thread" : `${stats.threads} text threads`],
   ];
 
@@ -52,7 +49,9 @@ export default function Overview({ api, onError, compact = false }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 120 : 180}px, 1fr))`,
+        // 100px so three fit across the keypad's 360, rather than dropping one
+        // onto a second row and leaving it stranded there.
+        gridTemplateColumns: `repeat(auto-fit, minmax(${compact ? 100 : 180}px, 1fr))`,
         gap: compact ? 8 : 12,
       }}
     >
