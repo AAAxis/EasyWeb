@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button, C, Modal, Table, dur, when } from "../lib/ui";
-import { usePhone } from "../../components/Dashboard";
 
 // The column stores what Twilio calls things; the table should not.
 const OUTCOME = {
@@ -41,10 +40,8 @@ function recordingFor(row, recordings) {
 }
 
 export default function Calls({ api, onError }) {
-  const phone = usePhone();
   const [rows, setRows] = useState(null);
   const [source, setSource] = useState(null);
-  const [active, setActive] = useState(null);
   const [recordings, setRecordings] = useState([]);
   const [settings, setSettings] = useState(null);
   // The call whose details are open, and the signed URL being played for it.
@@ -53,7 +50,7 @@ export default function Calls({ api, onError }) {
 
   const load = useCallback(() => {
     api("/calls?limit=100")
-      .then((b) => { setRows(b.calls ?? []); setSource(b.source ?? null); setActive(b.active_number ?? null); })
+      .then((b) => { setRows(b.calls ?? []); setSource(b.source ?? null); })
       .catch((e) => { setRows([]); onError(e.message); });
     api("/recordings?limit=100").then((b) => setRecordings(b.recordings ?? [])).catch(() => setRecordings([]));
     api("/settings/recording").then(setSettings).catch(() => {});
@@ -77,17 +74,6 @@ export default function Calls({ api, onError }) {
       setRecordings((current) => current.filter((r) => r.id !== recording.id));
       setPlaying(null);
     } catch (e) {
-      onError(e.message);
-    }
-  };
-
-  const toggleRecording = async () => {
-    const next = !settings?.enabled;
-    setSettings((s) => ({ ...s, enabled: next }));
-    try {
-      await api("/settings/recording", { method: "PUT", body: JSON.stringify({ enabled: next }) });
-    } catch (e) {
-      setSettings((s) => ({ ...s, enabled: !next }));
       onError(e.message);
     }
   };
@@ -120,24 +106,6 @@ export default function Calls({ api, onError }) {
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <Button onClick={phone.open}>Call</Button>
-        <span style={{ flex: 1 }} />
-        {settings ? (
-          <>
-            <span style={{ fontSize: 12.5, color: C.muted }}>Record calls</span>
-            <Button onClick={toggleRecording}>{settings.enabled ? "On" : "Off"}</Button>
-          </>
-        ) : null}
-      </div>
-
-      {source === "didlogic" ? (
-        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 10 }}>
-          From your carrier — what was actually carried, and what it cost.
-          {active ? <> Showing <b style={{ color: C.text }}>{active}</b> only; change it in Integrations.</> : null}
-        </div>
-      ) : null}
-
       <Table cols={cols} rows={rows} empty="No calls yet." onRow={setOpen} />
 
       {open ? (

@@ -163,8 +163,8 @@ export default function Phone({ api, onError, onClose }) {
   }[state];
 
   return (
-    <div style={{ maxWidth: 360 }}>
-      <div style={{ ...card, textAlign: "center" }}>
+    <div className="ec-phone" style={{ maxWidth: 360 }}>
+      <div className="ec-phone-card" style={{ ...card, textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "center", minHeight: 18 }}>
           <span style={{ flex: 1 }} />
           <div style={{ fontSize: 12.5, color: state === "on" ? C.good : C.muted, fontWeight: 600 }}>

@@ -60,6 +60,7 @@ export default function Integrations({ api, onError }) {
   const [values, setValues] = useState({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
+  const [recording, setRecording] = useState(null);
 
   const load = () => {
     api("/providers")
@@ -80,6 +81,7 @@ export default function Integrations({ api, onError }) {
     api("/twilio/account")
       .then((b) => setDialTwilio(typeof b?.balance === "number" ? b.balance : null))
       .catch(() => setDialTwilio(null));
+    api("/settings/recording").then(setRecording).catch(() => setRecording(null));
   };
   useEffect(load, [api]);
 
@@ -110,6 +112,17 @@ export default function Integrations({ api, onError }) {
       onError(e.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const toggleRecording = async () => {
+    const next = !recording?.enabled;
+    setRecording((current) => ({ ...current, enabled: next }));
+    try {
+      await api("/settings/recording", { method: "PUT", body: JSON.stringify({ enabled: next }) });
+    } catch (e) {
+      setRecording((current) => ({ ...current, enabled: !next }));
+      onError(e.message);
     }
   };
 
@@ -228,6 +241,18 @@ export default function Integrations({ api, onError }) {
         </div>
       )}
       <Note tone="good">{note}</Note>
+
+      {recording ? (
+        <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Record calls</div>
+            <div style={{ fontSize: 12.5, color: C.muted }}>
+              Off unless you turn it on. Everyone on the call may need to be told — the law differs by country.
+            </div>
+          </div>
+          <Button onClick={toggleRecording}>{recording.enabled ? "On" : "Off"}</Button>
+        </div>
+      ) : null}
 
       {trunkRows.length ? (
         <>
