@@ -116,9 +116,17 @@ export default function Landing({ onSignIn }) {
               gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
             }}
           >
-            {FEATURES.map((f) => (
+            {FEATURES.map((f, i) => (
               <div key={f.title} style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 18, padding: 26 }}>
-                <Mark size={30} />
+                <div
+                  style={{
+                    width: 30, height: 30, borderRadius: 9, background: "#EAF0FF",
+                    color: "var(--tint)", display: "grid", placeItems: "center",
+                    fontWeight: 800, fontSize: 14,
+                  }}
+                >
+                  {i + 1}
+                </div>
                 <h3 style={{ fontSize: 19, margin: "18px 0 8px", fontWeight: 700 }}>{f.title}</h3>
                 <p style={{ fontSize: 15 }}>{f.body}</p>
               </div>

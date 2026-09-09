@@ -297,6 +297,13 @@ Deno.serve(async (req) => {
 
         if (owner.length > 0) {
           const orgId = Number(owner[0].org_id);
+          // What the other end saw. For a call the app placed, From is
+          // "client:<uid>" — the caller id Twilio actually dialled with is the
+          // workspace's own number, chosen by the voice handler, so that is
+          // what belongs in the row. Without this the From column is empty for
+          // every outbound call.
+          const { numbers } = await import("../_shared/repository.ts");
+          const shown = uid ? await numbers.primaryFor(orgId) : from;
           const direction = uid || !params.Direction?.startsWith("inbound") ? "outbound" : "inbound";
           const other = direction === "inbound" ? from : to;
           const match = await contacts.findByPhone(orgId, other);
@@ -314,7 +321,7 @@ Deno.serve(async (req) => {
                    duration_seconds = ${seconds},
                    ended_at = now(),
                    provider_call_sid = coalesce(provider_call_sid, ${sid}),
-                   from_number = coalesce(from_number, ${uid ? null : from}),
+                   from_number = coalesce(from_number, ${shown}),
                    contact_id = coalesce(contact_id, ${match?.id ?? null})
              where id = (
                select id from app_private.calls
@@ -331,7 +338,7 @@ Deno.serve(async (req) => {
           if (!reconciled) {
             await calls.log(orgId, owner[0].user_id as string, {
               direction,
-              from_number: from,
+              from_number: shown ?? from,
               to_number: to,
               status: settled,
               duration_seconds: seconds,
