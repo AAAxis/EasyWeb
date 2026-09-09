@@ -28,6 +28,7 @@ import {
   authorizeUrl as twilioAuthorizeUrl, claim as claimTwilio,
   connect as connectTwilio, credsFor as twilioCredsFor,
   disconnect as disconnectTwilio, status as twilioStatus,
+  balance as twilioBalance,
 } from "../_shared/providers/twilioAccount.ts";
 import { calls, conversations, recordings } from "../_shared/activity.ts";
 import { playbackUrl, recordingConfigured, removeObject } from "../_shared/providers/recordings.ts";
@@ -193,7 +194,15 @@ router.add("POST /voice/token", async ({ req }) => {
 router.add("GET /twilio/account", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
-  return json(await twilioStatus(ctx.orgId));
+  // The balance rides along with the status the settings screen already asks
+  // for, rather than as a second round trip for one number. It is null when
+  // there is nothing to ask — no account, or one connected by OAuth, whose
+  // token the Balance resource will not take.
+  const [status, funds] = await Promise.all([
+    twilioStatus(ctx.orgId),
+    twilioBalance(ctx.orgId),
+  ]);
+  return json({ ...status, balance: funds?.balance ?? null, currency: funds?.currency ?? null });
 });
 
 router.add("POST /twilio/account", async ({ req }) => {

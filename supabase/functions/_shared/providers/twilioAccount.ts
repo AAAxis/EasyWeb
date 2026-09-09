@@ -466,6 +466,47 @@ export async function disconnect(orgId: number) {
 }
 
 /** Masked status for the settings screen. */
+/**
+ * What is left in the Twilio account.
+ *
+ * Twilio's own figure, not one derived from call costs here — the two would
+ * disagree the moment anything else on the account spends, and Twilio is the
+ * one holding the money.
+ *
+ * Returns null rather than throwing when there is nothing to ask: no account
+ * connected, or one connected by OAuth, whose Bearer token the Balance
+ * resource does not accept. A missing balance hides a line on a settings
+ * screen; it is not a reason to fail the screen.
+ */
+export async function balance(orgId: number) {
+  const creds = await credsFor(orgId);
+  if (!creds || !creds.own) return null;
+
+  // The API key is preferred where there is one: it is scoped to this account
+  // and revocable on its own, unlike the account's master token.
+  const user = creds.apiKeySid || creds.authUser || creds.accountSid;
+  const secret = creds.apiKeySid ? creds.apiKeySecret : creds.authToken;
+  if (!user || !secret) return null;
+
+  try {
+    const res = await fetch(`${BASE}/Accounts/${creds.accountSid}/Balance.json`, {
+      headers: basic(user, secret),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      console.warn(`Twilio balance: ${res.status} ${(await res.text()).slice(0, 160)}`);
+      return null;
+    }
+    const body = await res.json() as { balance?: string; currency?: string };
+    const amount = Number(body.balance);
+    if (!Number.isFinite(amount)) return null;
+    return { balance: amount, currency: String(body.currency ?? "USD") };
+  } catch (error) {
+    console.warn("Twilio balance failed:", (error as Error).message);
+    return null;
+  }
+}
+
 export async function status(orgId: number) {
   const row = await accountRow(orgId);
   return {
