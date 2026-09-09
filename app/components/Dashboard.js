@@ -27,6 +27,7 @@ export default function Dashboard({ here, children }) {
   const { token, ready, signIn, signOut } = useSession();
   const [error, setError] = useState(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [accountBalance, setAccountBalance] = useState(null);
   const api = useVoip(token);
   // Screens take these as props, so they have to keep their identity across
@@ -68,20 +69,20 @@ export default function Dashboard({ here, children }) {
           }
         }
       `}</style>
-      <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+      <header style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <Link href="/calls" aria-label="Open Activity" style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
           <Mark size={30} />
           <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>EasyCall</span>
         </Link>
         <span style={{ flex: 1 }} />
-        <Link
-          href="/integrations"
-          aria-label={`Open profile and settings. ${profileLabel}`}
+        <button
+          onClick={() => setProfileOpen((open) => !open)}
+          aria-label={`Open profile menu. ${profileLabel}`}
+          aria-expanded={profileOpen}
           style={{
-            border: `1px solid ${here === "/integrations" ? C.text : C.border}`,
-            background: here === "/integrations" ? "#F4F5F7" : "#fff", color: C.text,
+            border: `1px solid ${C.border}`, background: "#fff", color: C.text,
             borderRadius: 999, padding: "4px 11px 4px 5px", fontSize: 12.5,
-            display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600,
+            display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer",
           }}
         >
           <span style={{
@@ -93,7 +94,40 @@ export default function Dashboard({ here, children }) {
             </svg>
           </span>
           {profileLabel}
-        </Link>
+        </button>
+        {profileOpen ? (
+          <>
+            <button
+              onClick={() => setProfileOpen(false)}
+              aria-label="Close profile menu"
+              style={{ position: "fixed", inset: 0, zIndex: 29, border: 0, background: "transparent" }}
+            />
+            <div
+              role="menu"
+              style={{
+                position: "absolute", zIndex: 30, right: 0, top: 44, width: 190,
+                padding: 6, border: `1px solid ${C.border}`, borderRadius: 12,
+                background: "#fff", boxShadow: "0 14px 36px rgba(11,18,32,.16)",
+              }}
+            >
+              {[["/calls", "Calls"], ["/sms", "SMS"], ["/integrations", "Settings"]].map(([href, label]) => (
+                <Link
+                  key={href}
+                  href={href}
+                  role="menuitem"
+                  onClick={() => setProfileOpen(false)}
+                  style={{
+                    display: "block", padding: "11px 12px", borderRadius: 8,
+                    color: C.text, fontSize: 14, fontWeight: 500,
+                    background: here === href ? "#F1F3F5" : "transparent",
+                  }}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </>
+        ) : null}
       </header>
 
       <Note tone="bad">{error}</Note>
