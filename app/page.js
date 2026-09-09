@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { SignIn, useSession } from "./dashboard/lib/auth";
 import { useVoip } from "./dashboard/lib/api";
-import { C, Note, Skeleton } from "./dashboard/lib/ui";
+import { C, Note } from "./dashboard/lib/ui";
 import Overview from "./dashboard/screens/Overview";
 import Calls from "./dashboard/screens/Calls";
 import Sms from "./dashboard/screens/Sms";
@@ -28,10 +28,14 @@ export default function Dashboard() {
   // or every one of them re-fetches on every keystroke elsewhere.
   const onError = useCallback((message) => setError(message), []);
 
-  if (!ready) return <div style={{ padding: 40 }}><Skeleton rows={3} /></div>;
-  // Signed out, the page says what this is and takes you in — both at once,
-  // side by side, rather than making the pitch a separate page.
-  if (!token) return <Landing onSignIn={signIn} />;
+  // The landing is what the server renders and what a visitor sees first,
+  // rather than a skeleton that resolves into it: almost everyone arriving here
+  // is signed out, and a public page whose content only exists after hydration
+  // is a blank page to anything that does not run JavaScript.
+  //
+  // Signed out, it says what this is and takes you in at the same time — side
+  // by side, not on two URLs.
+  if (!ready || !token) return <Landing onSignIn={signIn} />;
 
   const Screen = (TABS.find(([key]) => key === tab) ?? TABS[0])[2];
 
