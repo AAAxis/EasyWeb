@@ -80,11 +80,11 @@ export default function Calls({ api, onError }) {
 
   const COLS = [
     ["When", (r) => when(r.started_at ?? r.created_at)],
-    ["Direction", (r) => (r.direction === "inbound" ? "In" : "Out")],
-    ["From", (r) => r.from_number ?? "—"],
+    ["Direction", (r) => (r.direction === "inbound" ? "In" : "Out"), "ec-calls-mobile-hidden"],
+    ["From", (r) => r.from_number ?? "—", "ec-calls-mobile-hidden"],
     ["To", (r) => r.to_number ?? "—"],
-    ["Who", (r) => r.contact_name ?? "—"],
-    ["Status", (r) => OUTCOME[r.status] ?? r.status ?? "—"],
+    ["Who", (r) => r.contact_name ?? "—", "ec-calls-mobile-hidden"],
+    ["Status", (r) => OUTCOME[r.status] ?? r.status ?? "—", "ec-calls-mobile-hidden"],
     ["Length", (r) => dur(r.duration_seconds)],
     // Only the carrier knows what a call cost, so this column only appears when
     // the carrier is the one answering.
@@ -106,7 +106,13 @@ export default function Calls({ api, onError }) {
 
   return (
     <>
-      <Table cols={cols} rows={rows} empty="No calls yet." onRow={setOpen} />
+      <style>{`
+        @media (max-width: 720px) {
+          .ec-calls-mobile-hidden { display: none; }
+          .ec-calls-table { min-width: 0 !important; }
+        }
+      `}</style>
+      <Table className="ec-calls-table" cols={cols} rows={rows} empty="No calls yet." onRow={setOpen} />
 
       {open ? (
         <Modal title={open.contact_name || open.to_number || "Call"} onClose={close}>

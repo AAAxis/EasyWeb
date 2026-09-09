@@ -39,17 +39,17 @@ export const dur = (seconds) => {
 };
 
 /** `onRow` makes rows clickable; without it the table is read-only as before. */
-export function Table({ cols, rows, empty = "Nothing yet.", onRow }) {
+export function Table({ cols, rows, empty = "Nothing yet.", onRow, className }) {
   if (!rows) return <Skeleton />;
   if (rows.length === 0) return <div style={{ ...card, color: C.muted, fontSize: 13.5 }}>{empty}</div>;
   const cell = { padding: "10px 12px", fontSize: 13, borderBottom: `1px solid ${C.border}`, textAlign: "left" };
   return (
     <div style={{ ...card, padding: 0, overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+      <table className={className} style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
         <thead>
           <tr>
-            {cols.map(([label]) => (
-              <th key={label} style={{ ...cell, color: C.faint, fontWeight: 600, fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {cols.map(([label, , className]) => (
+              <th key={label} className={className} style={{ ...cell, color: C.faint, fontWeight: 600, fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 {label}
               </th>
             ))}
@@ -62,8 +62,8 @@ export function Table({ cols, rows, empty = "Nothing yet.", onRow }) {
               onClick={onRow ? () => onRow(row) : undefined}
               style={onRow ? { cursor: "pointer" } : undefined}
             >
-              {cols.map(([label, render]) => (
-                <td key={label} style={{ ...cell, color: C.text }}>{render(row)}</td>
+              {cols.map(([label, render, className]) => (
+                <td key={label} className={className} style={{ ...cell, color: C.text }}>{render(row)}</td>
               ))}
             </tr>
           ))}
