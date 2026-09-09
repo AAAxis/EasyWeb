@@ -90,12 +90,18 @@ export function SignIn({ onSignIn }) {
   };
 
   return (
-    <div style={{ width: "100%", maxWidth: 380, justifySelf: "center" }}>
-      <div style={{ fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>EasyCall</div>
-      <div style={{ fontSize: 14, color: C.muted, margin: "6px 0 22px" }}>
-        Your calls, texts and recordings.
-      </div>
-      <div style={{ ...card, display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ width: "100%", maxWidth: 420, justifySelf: "stretch" }}>
+      <div
+        style={{
+          background: "#fff", border: `1px solid ${C.border}`, borderRadius: 20,
+          padding: 28, boxShadow: "0 18px 50px rgba(11,18,32,0.08)",
+          display: "flex", flexDirection: "column", gap: 10,
+        }}
+      >
+        <div style={{ fontSize: 20, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Sign in</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 6 }}>
+          The same account as the app.
+        </div>
         <input
           style={input}
           type="email"

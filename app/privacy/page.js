@@ -7,13 +7,13 @@ export const metadata = { title: "EasyCall — Privacy" };
 export default function Privacy() {
   return (
     <Marketing>
-      <h1>Privacy</h1>
-      <p className="lede">
+      <h1 style={{ fontSize: 40 }}>Privacy</h1>
+      <p style={{ fontSize: 19, margin: "16px 0 8px" }}>
         What EasyCall stores, why, and how to get rid of it.
       </p>
 
-      <h2>What we store</h2>
-      <ul>
+      <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>What we store</h2>
+      <ul style={{ paddingLeft: 20, color: "var(--body)", lineHeight: 1.7 }}>
         <li><b>Your account.</b> The email address you sign in with.</li>
         <li><b>Your phone number.</b> The number you buy or connect, so calls and texts can use it.</li>
         <li><b>Call records.</b> The numbers involved, whether the call was in or out, when it started, and how long it lasted.</li>
@@ -23,8 +23,8 @@ export default function Privacy() {
         <li><b>A notification token</b>, so the phone can ring when a call comes in.</li>
       </ul>
 
-      <h2>Who else sees it</h2>
-      <ul>
+      <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>Who else sees it</h2>
+      <ul style={{ paddingLeft: 20, color: "var(--body)", lineHeight: 1.7 }}>
         <li><b>Twilio</b> carries the calls and texts themselves. A phone call cannot happen without a carrier.</li>
         <li><b>Google Firebase</b> handles signing in and delivering notifications.</li>
         <li><b>Supabase</b> hosts the database and the recording storage.</li>
@@ -35,14 +35,14 @@ export default function Privacy() {
         messages for advertising.
       </p>
 
-      <h2>Recording calls</h2>
+      <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>Recording calls</h2>
       <p>
         Recording is off until you turn it on. Laws about recording a call differ
         by country and by state — in many places every participant has to know.
         You are responsible for using it lawfully where you are.
       </p>
 
-      <h2>Deleting it</h2>
+      <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>Deleting it</h2>
       <p>
         You can delete your account from inside the app: <b>Settings → Legal →
         Delete account</b>. That removes your account and the data above,
@@ -50,7 +50,7 @@ export default function Privacy() {
         do it.
       </p>
 
-      <h2>Getting in touch</h2>
+      <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>Getting in touch</h2>
       <p>
         Questions about any of this: <a href="mailto:support@chatkit.cc">support@chatkit.cc</a>.
       </p>

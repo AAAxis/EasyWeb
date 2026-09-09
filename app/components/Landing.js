@@ -1,50 +1,114 @@
 "use client";
 
 import { SignIn } from "../dashboard/lib/auth";
+import { Footer, Mark, TopBar } from "./Chrome";
 
 // What the app is, and the way in — on one page, next to each other. Someone
-// arriving here is either signing in or deciding whether to; splitting those
-// across two URLs serves neither.
+// arriving here is either signing in or deciding whether to, and splitting
+// those across two URLs serves neither.
+
+const FEATURES = [
+  {
+    title: "A number that is yours",
+    body: "Pick one, or bring the one you already use. Calls arrive on your iPhone wherever you are.",
+  },
+  {
+    title: "Texts in the same place",
+    body: "Every message on that number sits in one thread, on the phone and on the web.",
+  },
+  {
+    title: "Recordings when you want them",
+    body: "Off until you turn it on. Play a call back later, or delete it and it is gone.",
+  },
+];
+
 export default function Landing({ onSignIn }) {
   return (
-    <div
-      style={{
-        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-        gap: 48, alignItems: "center", maxWidth: 1000, margin: "0 auto",
-        padding: "10vh 24px 80px",
-      }}
-    >
-      <div>
+    <>
+      <TopBar />
+
+      <section className="wrap" style={{ padding: "84px 24px 96px" }}>
         <div
           style={{
-            width: 76, height: 76, borderRadius: 18, marginBottom: 26,
-            background: "linear-gradient(160deg, #4f8cff, #2f6bff)",
-            display: "grid", placeItems: "center",
-            boxShadow: "0 10px 30px rgba(47,107,255,0.25)",
+            display: "grid", gap: 64, alignItems: "center",
+            gridTemplateColumns: "minmax(320px, 1.15fr) minmax(300px, 0.85fr)",
           }}
+          className="hero"
         >
-          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M6.6 3.5c.5-.2 1.1 0 1.4.5l1.7 3c.3.5.2 1.1-.2 1.5l-1.3 1.2c.9 1.9 2.4 3.4 4.3 4.3l1.2-1.3c.4-.4 1-.5 1.5-.2l3 1.7c.5.3.7.9.5 1.4l-.8 2c-.2.6-.8.9-1.4.8C10.6 17.4 6.6 13.4 5.3 6.5c-.1-.6.2-1.2.8-1.4l.5-1.6z"
-              fill="#fff"
-            />
-          </svg>
-        </div>
-        <h1 style={{ fontSize: 38, lineHeight: 1.15, letterSpacing: "-0.02em", margin: "0 0 12px" }}>
-          Your phone number, on your phone.
-        </h1>
-        <p style={{ fontSize: 18, margin: "0 0 20px" }}>
-          Call and text from a real number. Record what matters, and keep every
-          call and message in one place.
-        </p>
-        <ul style={{ paddingLeft: 18, margin: 0 }}>
-          <li>Calls in and out, over the internet.</li>
-          <li>Texts from that same number.</li>
-          <li>Recordings you can play back.</li>
-        </ul>
-      </div>
+          <div>
+            <div
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 22,
+                background: "var(--wash)", border: "1px solid var(--line)", borderRadius: 999,
+                padding: "6px 14px", fontSize: 13, fontWeight: 600, color: "var(--body)",
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: "#0CA678" }} />
+              Calls and texts, one number
+            </div>
 
-      <SignIn onSignIn={onSignIn} />
-    </div>
+            <h1 style={{ fontSize: "clamp(40px, 5.4vw, 66px)" }}>
+              Your phone number,<br />on your phone.
+            </h1>
+
+            <p style={{ fontSize: 19, margin: "22px 0 32px", maxWidth: 520 }}>
+              EasyCall gives you a real number to call and text from. Every
+              conversation stays together — on the iPhone app, and here.
+            </p>
+
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <a className="btn btn-tint" href="#signin">Sign in</a>
+              <a className="btn" style={{ background: "var(--wash)", color: "var(--ink)" }} href="/about">
+                What it does
+              </a>
+            </div>
+          </div>
+
+          <div id="signin">
+            <SignIn onSignIn={onSignIn} />
+          </div>
+        </div>
+      </section>
+
+      <section style={{ background: "var(--wash)", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)", padding: "76px 0" }}>
+        <div className="wrap">
+          <h2 style={{ fontSize: "clamp(28px, 3.4vw, 40px)", maxWidth: 620 }}>
+            Everything a phone number should have done all along.
+          </h2>
+          <div
+            style={{
+              display: "grid", gap: 24, marginTop: 44,
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            }}
+          >
+            {FEATURES.map((f) => (
+              <div key={f.title} style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 18, padding: 26 }}>
+                <Mark size={30} />
+                <h3 style={{ fontSize: 19, margin: "18px 0 8px", fontWeight: 700 }}>{f.title}</h3>
+                <p style={{ fontSize: 15 }}>{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="wrap" style={{ padding: "84px 24px 0", textAlign: "center" }}>
+        <h2 style={{ fontSize: "clamp(28px, 3.4vw, 40px)", maxWidth: 640, margin: "0 auto" }}>
+          On the phone, and on the web.
+        </h2>
+        <p style={{ fontSize: 17, margin: "18px auto 0", maxWidth: 560 }}>
+          The iPhone app makes the calls. This dashboard keeps the history, the
+          recordings, the texts and the numbers — the same account, either end.
+        </p>
+      </section>
+
+      <Footer />
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `@media (max-width: 900px) { .hero { grid-template-columns: 1fr !important; gap: 44px !important; } }`,
+        }}
+      />
+    </>
   );
 }

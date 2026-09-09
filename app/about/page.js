@@ -16,21 +16,21 @@ export default function Home() {
   return (
     <Marketing>
       <div className="mark"><Handset /></div>
-      <h1>Your phone number, on your phone.</h1>
-      <p className="lede">
+      <h1 style={{ fontSize: 40 }}>Your phone number, on your phone.</h1>
+      <p style={{ fontSize: 19, margin: "16px 0 8px" }}>
         EasyCall makes and takes calls on a real phone number, and texts from the
         same one. Calls can be recorded, and every call and message stays in one
         place.
       </p>
 
-      <h2>What it does</h2>
-      <ul>
+      <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>What it does</h2>
+      <ul style={{ paddingLeft: 20, color: "var(--body)", lineHeight: 1.7 }}>
         <li>Call and answer on a number of your own, over the internet.</li>
         <li>Text from that same number, with the whole thread kept together.</li>
         <li>Record calls, and play them back later.</li>
       </ul>
 
-      <h2>Getting it</h2>
+      <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>Getting it</h2>
       <p>
         EasyCall is an iPhone app. It is in review with the App Store — this page
         will carry the download link the moment it is approved.

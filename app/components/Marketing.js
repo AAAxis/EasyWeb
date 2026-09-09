@@ -1,16 +1,16 @@
-// The narrow column the written pages live in. The dashboard does not use it:
-// a table wants the whole window, and prose does not.
+import { Footer, TopBar } from "./Chrome";
+
+// The narrow column the written pages live in, between the same bar and footer
+// the landing wears. The dashboard uses neither: a table wants the window, and
+// marketing navigation is in the way once you are signed in.
 export default function Marketing({ children }) {
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "72px 24px 96px" }}>
-      {children}
-      <nav>
-        <a href="/">Dashboard</a>
-        <a href="/about">About</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/terms">Terms</a>
-        <a href="mailto:support@chatkit.cc">Support</a>
-      </nav>
-    </main>
+    <>
+      <TopBar />
+      <main style={{ maxWidth: 720, margin: "0 auto", padding: "64px 24px 24px" }}>
+        {children}
+      </main>
+      <Footer />
+    </>
   );
 }
