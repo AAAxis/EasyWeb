@@ -100,9 +100,39 @@ export default function Dashboard({ here, children }) {
       {/* Set off from the navigation above it: the tabs are chrome, what is
           under them is the screen, and 12px read as one block of six pills and
           three tiles. */}
-      <div style={{ marginTop: 26 }}>
-        {token ? children({ api, onError, signOut }) : <Skeleton />}
-      </div>
+      {here === "/integrations" && token ? (
+        <section
+          aria-label="Settings"
+          style={{
+            position: "fixed", inset: 0, zIndex: 45, overflowY: "auto",
+            background: C.bg,
+            padding: "max(20px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom))",
+          }}
+        >
+          <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 22 }}>
+              <h1 style={{ margin: 0, fontSize: 22, color: C.text }}>Settings</h1>
+              <span style={{ flex: 1 }} />
+              <Link
+                href="/calls"
+                aria-label="Close settings"
+                style={{
+                  width: 38, height: 38, borderRadius: "50%", border: `1px solid ${C.border}`,
+                  background: "#fff", color: C.text, display: "inline-flex",
+                  alignItems: "center", justifyContent: "center", fontSize: 25, lineHeight: 1,
+                }}
+              >
+                ×
+              </Link>
+            </div>
+            {children({ api, onError, signOut })}
+          </div>
+        </section>
+      ) : (
+        <div style={{ marginTop: 26 }}>
+          {token ? children({ api, onError, signOut }) : <Skeleton />}
+        </div>
+      )}
 
       {token ? (
         <>
