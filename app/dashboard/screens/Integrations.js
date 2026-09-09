@@ -46,7 +46,6 @@ export default function Integrations({ api, onError }) {
   const [values, setValues] = useState({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
-  const [dialler, setDialler] = useState(false);
 
   const load = () => {
     api("/providers")
@@ -63,13 +62,11 @@ export default function Integrations({ api, onError }) {
     // requests it.
     api("/providers/balance").then((b) => setBalance(b.balance)).catch(() => setBalance(null));
     // The dialler is its own question: a workspace can have a carrier and still
-    // not be able to place a call.
+    // not be able to place a call. The balance answers it — Twilio only reports
+    // one for an account we can actually authenticate as.
     api("/twilio/account")
-      .then((b) => {
-        setDialler(Boolean(b?.connected ?? b?.account_sid));
-        setDialTwilio(typeof b?.balance === "number" ? b.balance : null);
-      })
-      .catch(() => { setDialler(false); setDialTwilio(null); });
+      .then((b) => setDialTwilio(typeof b?.balance === "number" ? b.balance : null))
+      .catch(() => setDialTwilio(null));
   };
   useEffect(load, [api]);
 
@@ -155,24 +152,22 @@ export default function Integrations({ api, onError }) {
             from where your numbers come from, and both are needed.
           </div>
         </div>
-        {dialTwilio === null ? null : (
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: C.faint, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Twilio balance
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: dialTwilio < 5 ? C.bad : C.text }}>
-              ${dialTwilio.toFixed(2)}
-            </div>
+        {/* The balance instead of a Connected badge. A figure says the same
+            thing the badge did — Twilio answers with one only for an account
+            that authenticates — and then says something more. */}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: C.faint, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Twilio balance
           </div>
-        )}
-        <span
-          style={{
-            fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "5px 12px",
-            color: dialler ? C.good : C.bad, background: dialler ? "#E3F7F1" : "#FDECEA",
-          }}
-        >
-          {dialler ? "Connected" : "Not connected"}
-        </span>
+          <div
+            style={{
+              fontSize: 22, fontWeight: 700,
+              color: dialTwilio === null ? C.faint : dialTwilio < 5 ? C.bad : C.text,
+            }}
+          >
+            {dialTwilio === null ? "—" : `$${dialTwilio.toFixed(2)}`}
+          </div>
+        </div>
       </div>
 
       <div style={{ fontSize: 13, fontWeight: 600, color: C.muted, margin: "0 0 8px" }}>
