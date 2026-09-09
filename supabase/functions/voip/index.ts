@@ -308,9 +308,33 @@ router.add("POST /numbers/import", async ({ req }) => {
 router.add("GET /numbers", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
+
+  // The same question, whichever carrier is connected: what numbers do I have?
+  // A caller should not have to know who sells them.
+  const [carrier] = await sql`
+    select provider, credentials from app_private.number_providers where org_id = ${ctx.orgId}`;
+  if (carrier?.provider === "didlogic") {
+    const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
+    const held = await didlogic.numbers(key);
+    return json({
+      numbers: held.map((n) => ({
+        id: n.id ?? n.number,
+        phone_number: n.number.startsWith("+") ? n.number : `+${n.number}`,
+        label: [n.country, n.area].filter(Boolean).join(" · ") || null,
+        is_primary: false,
+        verified: true,
+        channels: n.channels,
+      })),
+      provider: "didlogic",
+      configured: true,
+      own_account: true,
+    });
+  }
+
   const ownCreds = await twilioCredsFor(ctx.orgId);
   return json({
     numbers: await numbers.list(ctx.orgId),
+    provider: carrier?.provider ?? "twilio",
     configured: Boolean(ownCreds?.own),
     own_account: Boolean(ownCreds?.own),
   });
