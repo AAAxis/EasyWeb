@@ -84,6 +84,26 @@ async function verifySignature(req: Request, url: string, params: Record<string,
   return encodeBase64(new Uint8Array(mac)) === signature;
 }
 
+/**
+ * The number that was actually dialled.
+ *
+ * A call over the PSTN arrives with To="+6531072402". The same call arriving
+ * over a SIP trunk arrives as To="sip:6531072402@easycall-voip.sip.twilio.com"
+ * — a URI, with no plus. Matching that against `phone_numbers` found nothing,
+ * so every call a carrier trunk delivered was answered with "this number is
+ * not in service" and hung up three seconds later.
+ */
+const dialledNumber = (raw: string): string => {
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+  const user = value.startsWith("sip:") || value.startsWith("sips:")
+    ? value.slice(value.indexOf(":") + 1).split("@")[0]
+    : value;
+  const digits = user.replace(/[^\d+]/g, "");
+  if (!digits) return "";
+  return digits.startsWith("+") ? digits : `+${digits}`;
+};
+
 type RecordingPolicy = { orgId: number; record: boolean; announce: boolean };
 
 /**
@@ -201,7 +221,7 @@ Deno.serve(async (req) => {
 
       // Inbound: ring the registered client for whoever owns the number.
       case "incoming": {
-        const to = params.To ?? "";
+        const to = dialledNumber(params.To ?? "");
         // Every client in the workspace the number belongs to, not just the one
         // whose name happens to be on the number.
         //
