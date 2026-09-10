@@ -202,10 +202,19 @@ Deno.serve(async (req) => {
       // Inbound: ring the registered client for whoever owns the number.
       case "incoming": {
         const to = params.To ?? "";
+        // Every client in the workspace the number belongs to, not just the one
+        // whose name happens to be on the number.
+        //
+        // `phone_numbers.user_id` records who added it, and <Client> rang that
+        // identity alone — so a workspace with four members had three of them
+        // sitting in front of a registered softphone that never made a sound,
+        // while Twilio dialled a client nobody was signed in as. Ringing them
+        // all is what a shared line does; whoever answers first takes it.
         const rows = await sql`
-          select user_id, org_id from app_private.phone_numbers
-           where phone_number = ${to} and user_id is not null
-           limit 1
+          select m.user_id, pn.org_id
+            from app_private.phone_numbers pn
+            join app_private.org_members m on m.org_id = pn.org_id
+           where pn.phone_number = ${to}
         `;
         if (rows.length === 0) {
           return xml("<Response><Say>This number is not in service.</Say></Response>");
@@ -218,9 +227,13 @@ Deno.serve(async (req) => {
           ? '<Say voice="alice">This call may be recorded.</Say>'
           : "";
 
+        const clients = [...new Set(rows.map((r) => String(r.user_id)))]
+          .map((uid) => `<Client>${esc(uid)}</Client>`)
+          .join("");
+
         return xml(
           `<Response>${notice}<Dial timeout="30"${recordAttributes(policy)}>` +
-            `<Client>${esc(String(rows[0].user_id))}</Client></Dial></Response>`,
+            `${clients}</Dial></Response>`,
         );
       }
 
