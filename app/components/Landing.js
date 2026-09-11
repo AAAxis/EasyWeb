@@ -25,7 +25,7 @@ export function StoreBadges({ compact = false }) {
         <img src="/badges/app-store.svg" alt="Download on the App Store" style={{ height: h, display: "block" }} />
       </a>
       <a
-        href="https://play.google.com/store/apps/details?id=com.theholylabs.easycall"
+        href="https://play.google.com/store/apps/details?id=com.montigate.desk"
         target="_blank"
         rel="noreferrer"
         aria-label="Get it on Google Play"
