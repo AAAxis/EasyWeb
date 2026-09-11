@@ -44,10 +44,11 @@ export default function Privacy() {
 
       <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>Deleting it</h2>
       <p>
-        You can delete your account from inside the app: <b>Settings → Legal →
+        You can delete your account from inside the app: <b>Settings → Account →
         Delete account</b>. That removes your account and the data above,
         permanently, and it cannot be undone. You do not need to email anyone to
-        do it.
+        do it. The steps, the way to ask without the app, and what is kept are
+        on <a href="/delete-account">Delete your account</a>.
       </p>
 
       <h2 style={{ fontSize: 22, margin: "38px 0 10px" }}>Getting in touch</h2>
