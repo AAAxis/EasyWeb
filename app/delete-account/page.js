@@ -1,4 +1,5 @@
 import Marketing from "../components/Marketing";
+import RequestForm from "./RequestForm";
 
 export const metadata = {
   title: "EasyCall — Delete your account",
@@ -6,87 +7,109 @@ export const metadata = {
 };
 
 // The page the Google Play listing links to for account deletion. Play asks
-// that it name the app as the listing does, put the steps up front, and say
-// what is deleted, what is kept and for how long — so that is its order.
-// Written from what account deletion actually does (DELETE /me in the
-// EasyDeck API, which the app calls), not from a template.
-const h2 = { fontSize: 22, margin: "38px 0 10px" };
-const list = { paddingLeft: 20, color: "var(--body)", lineHeight: 1.7 };
+// that it name the app as the listing does, put the way to delete up front —
+// including a way to ask without the app — and say what is deleted, what is
+// kept and for how long. Written from what account deletion actually does
+// (DELETE /me in the EasyDeck API, which the app calls), not from a template.
+const card = {
+  border: "1px solid var(--line)", borderRadius: 16, background: "#fff",
+  padding: "24px 24px 20px", marginTop: 18,
+};
+const cardTitle = { fontSize: 19, margin: "0 0 4px", color: "var(--ink)" };
+const cardLead = { margin: "0 0 16px", color: "var(--body)", fontSize: 15 };
+const list = { margin: 0, paddingLeft: 20, color: "var(--body)", lineHeight: 1.75, fontSize: 15 };
+
+const STEPS = [
+  <>Open <b>EasyCall</b> and sign in.</>,
+  <>Tap the <b>Settings</b> tab, then <b>Account</b>.</>,
+  <>Tap <b>Delete account</b>, then <b>Delete</b>.</>,
+  <>Confirm with <b>Delete everything</b>.</>,
+];
 
 export default function DeleteAccount() {
   return (
     <Marketing>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/logo.png"
-        alt="EasyCall"
-        width={72}
-        height={72}
-        style={{ display: "block", borderRadius: 16, marginBottom: 20 }}
-      />
-      <h1 style={{ fontSize: 40 }}>Delete your EasyCall account</h1>
-      <p style={{ fontSize: 19, margin: "16px 0 8px" }}>
-        EasyCall is made by Montigate LLC. Here is how to delete your account
-        and everything in it, and what happens to your data when you do.
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="EasyCall" width={64} height={64}
+          style={{ borderRadius: 15, boxShadow: "0 4px 14px rgba(47,107,255,0.25)" }} />
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--tint)", letterSpacing: "0.02em" }}>
+            ACCOUNT DELETION
+          </div>
+          <h1 style={{ fontSize: 32, margin: "2px 0 0", color: "var(--ink)", lineHeight: 1.15 }}>
+            Delete your EasyCall account
+          </h1>
+        </div>
+      </div>
+      <p style={{ fontSize: 16.5, color: "var(--body)", margin: "18px 0 0", lineHeight: 1.6 }}>
+        EasyCall is made by Montigate LLC. You can delete your account and its
+        data yourself in the app, or ask us to do it with the form below.
       </p>
 
-      <h2 style={h2}>In the app — it takes a minute</h2>
-      <ol style={list}>
-        <li>Open <b>EasyCall</b> and sign in.</li>
-        <li>Tap the <b>Settings</b> tab.</li>
-        <li>Tap <b>Account</b>.</li>
-        <li>Tap <b>Delete account</b>, then <b>Delete</b>.</li>
-        <li>Confirm with <b>Delete everything</b>.</li>
-      </ol>
-      <p>
-        Your account is deleted there and then. There is no waiting period, and
-        it cannot be undone.
-      </p>
+      <section style={card}>
+        <h2 style={cardTitle}>Delete it in the app</h2>
+        <p style={cardLead}>Takes a minute. The account is deleted there and then, and it can&apos;t be undone.</p>
+        <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
+          {STEPS.map((step, i) => (
+            <li key={i} style={{ display: "flex", alignItems: "center", gap: 12, color: "var(--body)", fontSize: 15 }}>
+              <span style={{
+                flex: "0 0 28px", height: 28, borderRadius: 14, background: "var(--wash)",
+                color: "var(--tint)", fontWeight: 700, fontSize: 14,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>{i + 1}</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
 
-      <h2 style={h2}>Without the app</h2>
-      <p>
-        If you have uninstalled EasyCall or can&apos;t sign in, email{" "}
-        <a href="mailto:support@chatkit.cc?subject=Delete%20my%20EasyCall%20account">support@chatkit.cc</a>{" "}
-        from the address you sign in with and ask us to delete your account.
-        We delete it within 30 days and reply to confirm.
-      </p>
+      <section style={card}>
+        <h2 style={cardTitle}>Ask us to delete it</h2>
+        <p style={cardLead}>
+          No app, or can&apos;t sign in? Send this form. We email you a confirmation, delete the
+          account within 30 days, and reply when it&apos;s done.
+        </p>
+        <RequestForm />
+      </section>
 
-      <h2 style={h2}>What is deleted</h2>
-      <ul style={list}>
-        <li><b>Your sign-in account</b> — your email address, name and password.</li>
-        <li><b>Your call history</b> and <b>call recordings</b>, including the audio files.</li>
-        <li><b>Your texts</b> and WhatsApp conversations.</li>
-        <li><b>Your contacts</b>, and everything else you added in the app.</li>
-        <li><b>Your phone numbers&apos; settings</b> and the Twilio details you connected.</li>
-        <li><b>Your devices&apos; notification tokens</b>, so nothing is sent to your phone again.</li>
-      </ul>
+      <section style={card}>
+        <h2 style={cardTitle}>What is deleted</h2>
+        <ul style={list}>
+          <li>Your sign-in account — email address, name and password.</li>
+          <li>Your call history and call recordings, including the audio files.</li>
+          <li>Your texts and WhatsApp conversations.</li>
+          <li>Your contacts, and everything else you added in the app.</li>
+          <li>Your phone numbers&apos; settings and the Twilio details you connected.</li>
+          <li>Your devices&apos; notification tokens.</li>
+        </ul>
+      </section>
 
-      <h2 style={h2}>What is kept, and for how long</h2>
-      <ul style={list}>
-        <li>
-          <b>Your own Twilio account.</b> EasyCall connects to a Twilio account
-          that belongs to you. Numbers you bought there, and the call logs,
-          messages and recordings Twilio keeps in it, stay in that account
-          until you remove them in Twilio&apos;s console.
-        </li>
-        <li>
-          <b>Purchases.</b> If you subscribed, Apple or Google and our billing
-          provider RevenueCat keep the purchase record, as billing, refunds and
-          tax require. Deleting your account does not cancel a subscription —
-          cancel it in your App Store or Google Play subscriptions.
-        </li>
-        <li>
-          <b>Backups and logs.</b> Copies in our encrypted database backups,
-          and server logs that can include phone numbers or IP addresses, expire
-          on their own within 30 days.
-        </li>
-      </ul>
-      <p>Nothing else is kept.</p>
+      <section style={card}>
+        <h2 style={cardTitle}>What is kept, and for how long</h2>
+        <ul style={list}>
+          <li>
+            <b>Your own Twilio account.</b> EasyCall connects to a Twilio account that belongs
+            to you. Numbers you bought there, and the call logs, messages and recordings Twilio
+            keeps in it, stay until you remove them in Twilio&apos;s console.
+          </li>
+          <li>
+            <b>Purchases.</b> If you subscribed, Apple or Google and our billing provider
+            RevenueCat keep the purchase record, as billing, refunds and tax require. Deleting
+            your account doesn&apos;t cancel a subscription — cancel it in your store&apos;s
+            subscriptions.
+          </li>
+          <li>
+            <b>Backups and logs.</b> Copies in encrypted database backups, and server logs that
+            can include phone numbers or IP addresses, expire on their own within 30 days.
+          </li>
+        </ul>
+        <p style={{ margin: "12px 0 0", color: "var(--body)", fontSize: 15 }}>Nothing else is kept.</p>
+      </section>
 
-      <h2 style={h2}>Questions</h2>
-      <p>
-        Email <a href="mailto:support@chatkit.cc">support@chatkit.cc</a>. More on
-        what EasyCall stores and why is in the <a href="/privacy">privacy policy</a>.
+      <p style={{ margin: "28px 0 8px", color: "var(--faint)", fontSize: 14 }}>
+        Questions: <a href="mailto:support@chatkit.cc">support@chatkit.cc</a> ·{" "}
+        <a href="/privacy">Privacy policy</a>
       </p>
     </Marketing>
   );
