@@ -286,8 +286,42 @@ Deno.serve(async (req) => {
           return xml("<Response/>");
         }
 
+        const orgId = Number(owner[0].org_id);
         const { conversations } = await import("../_shared/activity.ts");
-        await conversations.receiveSms(Number(owner[0].org_id), from, body, params.MessageSid ?? null);
+        const message = await conversations.receiveSms(orgId, from, body, params.MessageSid ?? null);
+
+        // Tell the phones. Recording a text is not the same as anyone knowing
+        // it came: this used to write the row and stop, so a text arrived in
+        // silence and waited for someone to open the app. Every active device
+        // of the workspace's members is sent it; a token FCM calls gone is
+        // retired. Awaited but fenced — a push that fails must never turn into
+        // a webhook that fails, or Twilio retries and the text lands twice.
+        try {
+          const sender = dialledNumber(from) || from;
+          const known = await contacts.findByPhone(orgId, sender).catch(() => null);
+          const title = String(known?.full_name || sender);
+          const preview = body.length > 140 ? `${body.slice(0, 140)}…` : body;
+          const tokens = await sql`
+            select distinct dt.token
+              from app_private.device_tokens dt
+              join app_private.org_members m on m.user_id = dt.user_id
+             where m.org_id = ${orgId} and dt.is_active = true
+          ` as unknown as { token: string }[];
+          if (tokens.length > 0) {
+            const { sendFcm } = await import("../_shared/fcm.ts");
+            const data = { conversationId: String(message.conversation_id), kind: "sms" };
+            const dead: string[] = [];
+            await Promise.all(tokens.map(async ({ token }) => {
+              const result = await sendFcm(token, title, preview, "/sms", undefined, data).catch(() => null);
+              if (result?.unregistered) dead.push(token);
+            }));
+            if (dead.length) {
+              await sql`update app_private.device_tokens set is_active = false where token = any(${dead})`;
+            }
+          }
+        } catch (pushError) {
+          console.warn("SMS push failed:", (pushError as Error).message);
+        }
 
         return xml("<Response/>");
       }
