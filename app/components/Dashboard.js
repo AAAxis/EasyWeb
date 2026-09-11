@@ -34,16 +34,17 @@ export default function Dashboard({ here, children }) {
   // renders or every one of them re-fetches whenever anything else changes.
   const onError = useCallback((message) => setError(message), []);
 
+  // The carrier's balance, not the OxaPay float: this is the figure that runs
+  // out and stops the phone, so it is the one worth a glance from every
+  // screen. The float is still on Settings, beside the button that tops it up.
   useEffect(() => {
     if (!token) { setAccountBalance(null); return; }
-    api("/balance")
-      .then((body) => setAccountBalance(body.held?.[0] ?? null))
+    api("/providers/balance")
+      .then((body) => setAccountBalance(typeof body.balance === "number" ? body.balance : null))
       .catch(() => setAccountBalance(null));
   }, [api, token]);
 
-  const profileLabel = accountBalance
-    ? `${Number(accountBalance.amount).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${accountBalance.currency}`
-    : "Balance";
+  const profileLabel = accountBalance === null ? "Balance" : `$${accountBalance.toFixed(2)}`;
 
   // `/` doubles as the marketing page and is rendered on the server for people
   // arriving without an account, so it shows the landing until the session says
@@ -125,6 +126,20 @@ export default function Dashboard({ here, children }) {
                   {label}
                 </Link>
               ))}
+              {/* Last, under a rule: the one item that ends the session sits apart
+                  from the ones that only move you around. */}
+              <div style={{ height: 1, background: C.border, margin: "6px 4px" }} />
+              <button
+                role="menuitem"
+                onClick={() => { setProfileOpen(false); signOut(); }}
+                style={{
+                  display: "block", width: "100%", textAlign: "left", padding: "11px 12px",
+                  borderRadius: 8, border: 0, background: "transparent", cursor: "pointer",
+                  color: C.bad, fontSize: 14, fontWeight: 500,
+                }}
+              >
+                Sign out
+              </button>
             </div>
           </>
         ) : null}
@@ -156,12 +171,12 @@ export default function Dashboard({ here, children }) {
                 ×
               </Link>
             </div>
-            {children({ api, onError, signOut })}
+            {children({ api, onError })}
           </div>
         </section>
       ) : (
         <div style={{ marginTop: 26 }}>
-          {token ? children({ api, onError, signOut }) : <Skeleton />}
+          {token ? children({ api, onError }) : <Skeleton />}
         </div>
       )}
 
