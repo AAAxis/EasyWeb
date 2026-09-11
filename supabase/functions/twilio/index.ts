@@ -251,8 +251,19 @@ Deno.serve(async (req) => {
           .map((uid) => `<Client>${esc(uid)}</Client>`)
           .join("");
 
+        // Who is calling, as a number. Twilio hands the client leg whatever
+        // arrived as From, and a call off a carrier's SIP trunk arrives as
+        // "sip:6531061544@46.19.214.14" — which is what the incoming-call
+        // screen then showed. Forwarding the caller as callerId is the ordinary
+        // way to ring an agent: the number is the user part of the URI with its
+        // plus put back. An anonymous caller has none, so the attribute is left
+        // off rather than blanked. (Briefly suspected of stopping iOS ringing;
+        // it did not — Twilio dialled every client with it set. That was push.)
+        const caller = dialledNumber(params.From ?? "");
+        const callerId = caller ? ` callerId="${esc(caller)}"` : "";
+
         return xml(
-          `<Response>${notice}<Dial timeout="30"${recordAttributes(policy)}>` +
+          `<Response>${notice}<Dial timeout="30"${callerId}${recordAttributes(policy)}>` +
             `${clients}</Dial></Response>`,
         );
       }
