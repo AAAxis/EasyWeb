@@ -242,21 +242,16 @@ export const conversations = {
    * deciding to keep it.
    */
   async forPhone(orgId: number, phone: string) {
-    const { contacts } = await import("./repository.ts");
-    const match = await contacts.findByPhone(orgId, phone);
-    if (match) return await conversations.forContact(orgId, match.id);
-
-    const rows = await sql`
-      select * from app_private.conversations
-       where org_id = ${orgId} and channel = 'sms' and subject = ${phone} and status <> 'closed'
-       order by last_message_at desc limit 1
-    `;
-    if (rows.length > 0) return rows[0];
-    return await conversations.create(orgId, { channel: "sms", subject: phone });
+    const { smsThreadForPhone } = await import("./smsThreads.ts");
+    return await smsThreadForPhone(orgId, phone);
   },
 
   /** Reuses the contact's open conversation instead of piling up threads. */
   async forContact(orgId: number, contactId: number) {
+    const [contact] = await sql`select phone from app_private.contacts where org_id=${orgId} and id=${contactId}`;
+    if (contact?.phone && /^\+?[\d\s()-]{7,}$/.test(contact.phone)) {
+      return await conversations.forPhone(orgId, contact.phone);
+    }
     const rows = await sql`
       select * from app_private.conversations
        where org_id = ${orgId} and contact_id = ${contactId} and status <> 'closed'
@@ -318,7 +313,9 @@ export const conversations = {
   ) {
     if (!input.body?.trim()) throw new HttpError(400, "A text needs a body", "EMPTY_MESSAGE");
 
-    const { contacts } = await import("./repository.ts");
+    const { contacts, numbers } = await import("./repository.ts");
+    const from = await numbers.purchasedForUser(orgId, userId);
+    if (!from) throw new HttpError(403,"Purchase a number to send SMS.","PURCHASED_NUMBER_REQUIRED");
     let contact = null;
     if (input.contact_id) contact = await contacts.get(orgId, input.contact_id);
 
@@ -339,36 +336,40 @@ export const conversations = {
 
     // Reuse the thread being replied to, else the contact's open thread, so
     // texts and in-app messages sit together rather than splitting histories.
-    const conversation = existing ??
-      (contact
-        ? await conversations.forContact(orgId, contact.id)
-        : await conversations.create(orgId, { channel: "sms", subject: to }));
+    const conversation = await conversations.forPhone(orgId, to);
 
     if (conversation.channel !== "sms") {
       await sql`update app_private.conversations set channel = 'sms' where id = ${conversation.id}`;
     }
 
-    const { sendSms: send } = await import("./providers/sms.ts");
+    const { sendPrepaidSms: send } = await import("./prepaidSms.ts");
     const { credsFor } = await import("./providers/twilioAccount.ts");
-    const { numbers } = await import("./repository.ts");
     const creds = await credsFor(orgId);
-    const from = (await numbers.primaryFor(orgId)) ?? undefined;
-    // Texting runs on the workspace's own Twilio account, never the
-    // platform's — the message is still recorded either way.
-    const result = creds?.own
-      ? await send({ to, from, body: input.body }, creds)
+    // Missing assignment must fail closed: the provider's default sender may
+    // belong to another customer. Both managed and connected accounts work.
+    const result = from && creds
+      ? await send(orgId, userId, { to, from, body: input.body }, creds)
       : {
           provider: "twilio",
           providerMessageId: null,
           status: "failed" as const,
-          error: "Connect your Twilio account in Settings → Phone number to send texts.",
+          error: from
+            ? "Text messaging is temporarily unavailable. Please try again later."
+            : "No purchased phone number is assigned to your account.",
         };
+
+    if (result.providerMessageId && creds) {
+      const { queueUsage } = await import("./usageBilling.ts");
+      // The signed delivery callback retries registration if this write fails.
+      await queueUsage("sms", result.providerMessageId, creds.accountSid, orgId, userId)
+        .catch(() => console.error("SMS usage registration failed; awaiting delivery callback"));
+    }
 
     const message = await conversations.postMessage(orgId, conversation.id, {
       body: input.body,
       sender_type: "user",
       sender_user_id: userId,
-      attachments: [{ kind: "sms", to, status: result.status, provider_id: result.providerMessageId }],
+      attachments: [{ kind: "sms", from, to, status: result.status, provider_id: result.providerMessageId }],
     });
 
     return { conversation, message, delivery: result };
@@ -376,12 +377,7 @@ export const conversations = {
 
   /** Records an inbound text, creating the conversation if this is the first. */
   async receiveSms(orgId: number, from: string, body: string, providerId?: string | null) {
-    const { contacts } = await import("./repository.ts");
-    const match = await contacts.findByPhone(orgId, from);
-
-    const conversation = match
-      ? await conversations.forContact(orgId, match.id)
-      : await conversations.create(orgId, { channel: "sms", subject: from });
+    const conversation = await conversations.forPhone(orgId, from);
 
     if (conversation.channel !== "sms") {
       await sql`update app_private.conversations set channel = 'sms' where id = ${conversation.id}`;

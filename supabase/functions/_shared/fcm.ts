@@ -4,29 +4,21 @@ import { FCM_SCOPE, firebaseProjectId, getServiceAccountAccessToken } from "./fi
 export interface FcmResult { token: string; status: number; unregistered: boolean; }
 
 /** Send one notification to one device token. */
-export async function sendFcm(
-  token: string,
-  title: string,
-  body: string,
-  url = "/dashboard/hot",
-  leadId?: number,
-  // Whatever else the app needs to route the tap. FCM data values must be
-  // strings, so they are sent as strings.
-  extra: Record<string, string> = {},
-): Promise<FcmResult> {
+export async function sendFcm(token: string, title: string, body: string, url = "/dashboard/hot", leadId?: number, collapseId?: string): Promise<FcmResult> {
   const projectId = firebaseProjectId();
   const accessToken = await getServiceAccountAccessToken(FCM_SCOPE);
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(15000),
     body: JSON.stringify({
       message: {
         token,
         notification: { title, body },
         // data rides alongside so the app can route the tap to the right screen
-        data: { url, title, body, ...(leadId ? { leadId: String(leadId) } : {}), ...extra },
-        android: { priority: "high", notification: { sound: "default" } },
-        apns: { payload: { aps: { sound: "default", badge: 1 } } },
+        data: { url, title, body, ...(leadId ? { leadId: String(leadId) } : {}) },
+        android: { priority: "high", ...(collapseId ? { collapse_key: collapseId } : {}), notification: { sound: "default", ...(collapseId ? { tag: collapseId } : {}) } },
+        apns: { ...(collapseId ? { headers: { "apns-collapse-id": collapseId } } : {}), payload: { aps: { sound: "default", badge: 1 } } },
       },
     }),
   });

@@ -7,9 +7,12 @@
 import { corsHeaders } from "../_shared/http.ts";
 import { env } from "../_shared/env.ts";
 import { sql } from "../_shared/db.ts";
+import { queueUsage } from "../_shared/usageBilling.ts";
 import { calls } from "../_shared/activity.ts";
 import { contacts } from "../_shared/repository.ts";
 import { archive } from "../_shared/providers/recordings.ts";
+import { classifySipCall, maskNumber, type SipRoutingConfig } from "../_shared/sipRouting.ts";
+import { sipEndpoint, twilioAllowsCallerId, type SipEndpoint } from "../_shared/sipEndpoints.ts";
 import { crypto } from "https://deno.land/std@0.224.0/crypto/mod.ts";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 
@@ -142,6 +145,92 @@ const recordAttributes = (policy: RecordingPolicy | null) =>
       ` recordingStatusCallbackEvent="completed" recordingStatusCallbackMethod="POST"`
     : "";
 
+/**
+ * Bridge a paid, authorized outbound call to the PSTN number `to`.
+ *
+ * Shared by calls the app places and calls a registered softphone places, so
+ * both get the same caller id, time limit, recording and callbacks.
+ */
+async function bridgeOut(callSid: string, orgId: number, from: string, to: string, seconds: number) {
+  const policy = await recordingPolicy(orgId);
+
+  // The notice plays to the person being called, on their own leg, before
+  // the two are bridged — so they hear it before anything is recorded.
+  const announce = policy?.record && policy.announce
+    ? ` url="${esc(publicUrl("announce"))}"`
+    : "";
+
+  // The far leg reports its own outcome.
+  //
+  // `action` alone was not enough: Twilio requests it when the <Dial>
+  // finishes, and a caller who gives up before anyone picks up does not
+  // finish a dial — the call simply ends and no request is ever made. So
+  // the row stayed in_progress, with no duration and no caller id, for
+  // every call that was not answered. This callback always arrives once
+  // the other leg exists. The parent's sid rides in the query string —
+  // part of what Twilio signs — so both callbacks name the same call and
+  // the second to land updates the row instead of logging it twice.
+  const report =
+    ` statusCallback="${esc(publicUrl("status", `?call=${callSid}&org=${orgId}`))}"` +
+    ` statusCallbackEvent="completed" statusCallbackMethod="POST"`;
+
+  return xml(
+    `<Response><Dial callerId="${esc(from)}" answerOnBridge="true" ` +
+      `timeLimit="${seconds}" timeout="30" action="${esc(publicUrl("status", `?call=${callSid}&org=${orgId}`))}" method="POST"${recordAttributes(policy)}>` +
+      `<Number${announce}${report}>${esc(to)}</Number></Dial></Response>`,
+  );
+}
+
+const sipConfig = (): SipRoutingConfig => ({
+  domain: env("TWILIO_SIP_DOMAIN", "easycall-voip.sip.twilio.com"),
+  domainSid: env("TWILIO_SIP_DOMAIN_SID") || undefined,
+  carrierIps: env("SIP_CARRIER_IPS").split(",").map((ip) => ip.trim()).filter(Boolean),
+});
+
+/** One line per routing decision. Numbers are masked; no credentials exist in these params. */
+const logRoute = (callSid: string, decision: string, fields: Record<string, unknown> = {}) =>
+  console.info(JSON.stringify({ event: "voice_route", callSid, decision, ...fields }));
+
+/**
+ * A call a registered softphone placed through our SIP domain, to the PSTN.
+ *
+ * Twilio has already checked the SIP credentials; the endpoint row is what
+ * lets that username call as a user, and the caller id is re-checked against
+ * Twilio because the carrier drops a call with a caller id it will not carry.
+ */
+async function sipOutbound(params: Record<string, string>, endpoint: SipEndpoint, destination: string | null) {
+  const sid = params.CallSid ?? "";
+  if (!destination) {
+    logRoute(sid, "sip_outbound_rejected", { reason: "INVALID_DESTINATION" });
+    return xml("<Response><Say>Dial the full international number, starting with plus and the country code.</Say><Hangup/></Response>");
+  }
+
+  let allowed: boolean;
+  try {
+    allowed = await twilioAllowsCallerId(endpoint.orgId, endpoint.callerId);
+  } catch (error) {
+    logRoute(sid, "sip_outbound_rejected", { reason: "CALLER_ID_CHECK_FAILED", error: (error as Error).message });
+    return xml("<Response><Say>Calling is temporarily unavailable.</Say><Hangup/></Response>");
+  }
+  if (!allowed) {
+    logRoute(sid, "sip_outbound_rejected", { reason: "CALLER_ID_NOT_VERIFIED", callerId: maskNumber(endpoint.callerId) });
+    return xml("<Response><Say>Your caller number is not verified for outgoing calls.</Say><Hangup/></Response>");
+  }
+
+  const { authorizePrepaidCall } = await import("../_shared/prepaidCalls.ts");
+  let payment;
+  try {
+    payment = await authorizePrepaidCall({sid,accountSid:params.AccountSid??'',
+      orgId:endpoint.orgId,userId:endpoint.userId,from:endpoint.callerId,to:destination,direction:'outbound'});
+  } catch (error) {
+    logRoute(sid, "sip_outbound_rejected", { reason: (error as any)?.code ?? (error as any)?.message });
+    return xml('<Response><Hangup/></Response>');
+  }
+
+  logRoute(sid, "sip_outbound", { to: maskNumber(destination), callerId: maskNumber(endpoint.callerId), seconds: payment.seconds });
+  return await bridgeOut(sid, endpoint.orgId, endpoint.callerId, destination, payment.seconds);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -168,49 +257,33 @@ Deno.serve(async (req) => {
         // The dialling client identifies the workspace: app-originated calls
         // arrive as "client:<firebase-uid>".
         const uid = params.From?.startsWith("client:") ? params.From.slice("client:".length) : null;
-        const member = uid
-          ? await sql`select org_id from app_private.org_members where user_id = ${uid} limit 1`
-          : [];
-        const orgId = member.length > 0 ? Number(member[0].org_id) : null;
-
-        // Caller ID must be a number the account owns or has verified. The
-        // workspace's own number (purchased or bound) wins; TWILIO_CALLER_ID
-        // is the platform-wide fallback. params.From is the client identity,
-        // which Twilio rejects as a caller id — so having neither is a
-        // configuration error, not something to paper over with a blank value.
-        const { numbers } = await import("../_shared/repository.ts");
-        const from = (orgId ? await numbers.primaryFor(orgId) : null) ?? env("TWILIO_CALLER_ID");
+        const requestedOrg = /^\d+$/.test(params.OrgId ?? "") ? Number(params.OrgId) : null;
+        const owned = uid ? await sql`
+          select pn.org_id, pn.phone_number
+            from app_private.phone_numbers pn
+            join app_private.org_members m on m.org_id = pn.org_id and m.user_id = pn.user_id
+           where pn.user_id = ${uid} and pn.is_verified = true
+             and (${requestedOrg}::bigint is null or pn.org_id = ${requestedOrg})
+           order by pn.is_primary desc, pn.id desc limit 1
+        ` : [];
+        const orgId = owned.length ? Number(owned[0].org_id) : null;
+        const from = owned.length ? String(owned[0].phone_number) : null;
+        // Never expose another customer's number or the platform fallback.
         if (!from) {
-          return xml("<Response><Say>Calling is not configured for this workspace.</Say></Response>");
+          return xml("<Response><Say>No verified phone number is assigned to your account.</Say><Hangup/></Response>");
         }
 
-        const policy = await recordingPolicy(orgId);
+        const { authorizePrepaidCall } = await import("../_shared/prepaidCalls.ts");
+        let payment;
+        try {
+          payment = await authorizePrepaidCall({sid:params.CallSid??'',accountSid:params.AccountSid??'',
+            orgId:orgId!,userId:uid!,from,to,direction:'outbound'});
+        } catch (error) {
+          console.warn('Call payment rejected:', (error as any)?.code ?? (error as any)?.message);
+          return xml('<Response><Hangup/></Response>');
+        }
 
-        // The notice plays to the person being called, on their own leg, before
-        // the two are bridged — so they hear it before anything is recorded.
-        const announce = policy?.record && policy.announce
-          ? ` url="${esc(publicUrl("announce"))}"`
-          : "";
-
-        // The far leg reports its own outcome.
-        //
-        // `action` alone was not enough: Twilio requests it when the <Dial>
-        // finishes, and a caller who gives up before anyone picks up does not
-        // finish a dial — the call simply ends and no request is ever made. So
-        // the row stayed in_progress, with no duration and no caller id, for
-        // every call that was not answered. This callback always arrives once
-        // the other leg exists. The parent's sid rides in the query string —
-        // part of what Twilio signs — so both callbacks name the same call and
-        // the second to land updates the row instead of logging it twice.
-        const report =
-          ` statusCallback="${esc(publicUrl("status", `?call=${params.CallSid ?? ""}${orgId ? `&org=${orgId}` : ""}`))}"` +
-          ` statusCallbackEvent="completed" statusCallbackMethod="POST"`;
-
-        return xml(
-          `<Response><Dial callerId="${esc(from)}" answerOnBridge="true" ` +
-            `action="${esc(publicUrl("status"))}" method="POST"${recordAttributes(policy)}>` +
-            `<Number${announce}${report}>${esc(to)}</Number></Dial></Response>`,
-        );
+        return await bridgeOut(params.CallSid ?? "", orgId!, from, to, payment.seconds);
       }
 
       // Played to the called party the moment they pick up, before the bridge.
@@ -220,25 +293,56 @@ Deno.serve(async (req) => {
         );
 
       // Inbound: ring the registered client for whoever owns the number.
+      //
+      // Everything that reaches the SIP domain lands here too, including calls
+      // a softphone places OUT: Twilio labels both "inbound". Handling an
+      // outgoing Zoiper call as inbound looked the far number up as one of
+      // ours; the user's own verified mobile matched, the call was billed as
+      // an inbound call from a caller with no number, and that was rejected.
       case "incoming": {
+        const config = sipConfig();
+        const sip = classifySipCall(params, config);
+        if (sip.kind === "reject") {
+          logRoute(params.CallSid ?? "", "sip_rejected", { reason: sip.reason });
+          return xml('<Response><Reject reason="rejected"/></Response>');
+        }
+        let unknownSipUser = false;
+        if (sip.kind === "endpoint") {
+          const endpoint = await sipEndpoint(config.domain, sip.username);
+          if (endpoint) return await sipOutbound(params, endpoint, sip.destination);
+          // Not one of our softphones. The only other thing on the domain is a
+          // carrier delivering a call — which must be to one of our numbers.
+          unknownSipUser = true;
+        }
+
         const to = dialledNumber(params.To ?? "");
-        // Every client in the workspace the number belongs to, not just the one
-        // whose name happens to be on the number.
-        //
-        // `phone_numbers.user_id` records who added it, and <Client> rang that
-        // identity alone — so a workspace with four members had three of them
-        // sitting in front of a registered softphone that never made a sound,
-        // while Twilio dialled a client nobody was signed in as. Ringing them
-        // all is what a shared line does; whoever answers first takes it.
+        // The number belongs to the signed-in account behind its assigned
+        // email. Workspace membership does not make every member a recipient.
         const rows = await sql`
-          select m.user_id, pn.org_id
+          select pn.user_id, pn.org_id
             from app_private.phone_numbers pn
-            join app_private.org_members m on m.org_id = pn.org_id
-           where pn.phone_number = ${to}
+           where pn.phone_number = ${to} and pn.user_id is not null
+           limit 1
         `;
         if (rows.length === 0) {
+          if (unknownSipUser) {
+            logRoute(params.CallSid ?? "", "sip_rejected", { reason: "UNKNOWN_SIP_USER" });
+            return xml('<Response><Reject reason="rejected"/></Response>');
+          }
+          logRoute(params.CallSid ?? "", "inbound_unknown_number", { to: maskNumber(to) });
           return xml("<Response><Say>This number is not in service.</Say></Response>");
         }
+
+        const { authorizePrepaidCall } = await import("../_shared/prepaidCalls.ts");
+        let payment;
+        try {
+          payment = await authorizePrepaidCall({sid:params.CallSid??'',accountSid:params.AccountSid??'',
+            orgId:Number(rows[0].org_id),userId:String(rows[0].user_id),from:dialledNumber(params.From??''),to,direction:'inbound'});
+        } catch(error) {
+          logRoute(params.CallSid ?? "", "inbound_rejected", { kind: sip.kind, reason: (error as any)?.code ?? (error as any)?.message });
+          return xml('<Response><Reject reason="rejected"/></Response>');
+        }
+        logRoute(params.CallSid ?? "", "inbound", { kind: sip.kind, to: maskNumber(to), seconds: payment.seconds });
 
         const policy = await recordingPolicy(Number(rows[0].org_id));
         // Inbound, the caller is already on the line, so the notice goes ahead
@@ -263,9 +367,23 @@ Deno.serve(async (req) => {
         const callerId = caller ? ` callerId="${esc(caller)}"` : "";
 
         return xml(
-          `<Response>${notice}<Dial timeout="30"${callerId}${recordAttributes(policy)}>` +
+          `<Response>${notice}<Dial timeout="30" timeLimit="${payment.seconds}" action="${esc(publicUrl("status", `?call=${params.CallSid}&org=${rows[0].org_id}`))}" method="POST"${callerId}${recordAttributes(policy)}>` +
             `${clients}</Dial></Response>`,
         );
+      }
+
+      // The URL, including its account owner, is covered by Twilio's signature.
+      case "sms-status": {
+        const orgId = Number(url.searchParams.get("org"));
+        const uid = url.searchParams.get("uid") ?? "";
+        if (!Number.isSafeInteger(orgId) || orgId <= 0 || !uid) return new Response("Invalid usage owner", {status:400});
+        const payment = url.searchParams.get("payment");
+        if (payment) {
+          const { recordSmsPaymentCallback } = await import("../_shared/prepaidSms.ts");
+          await recordSmsPaymentCallback(payment,uid,orgId,params.MessageSid ?? "");
+        }
+        await queueUsage("sms", params.MessageSid ?? "", params.AccountSid ?? "", orgId, uid);
+        return xml("<Response/>");
       }
 
       // Inbound text. Twilio expects TwiML back; an empty Response means
@@ -279,7 +397,7 @@ Deno.serve(async (req) => {
         // The number texted identifies the workspace, the same way it does for
         // an inbound call.
         const owner = await sql`
-          select org_id from app_private.phone_numbers where phone_number = ${to} limit 1
+          select org_id, user_id from app_private.phone_numbers where phone_number = ${to} limit 1
         `;
         if (owner.length === 0) {
           console.warn(`Inbound SMS to an unknown number: ${to}`);
@@ -287,6 +405,9 @@ Deno.serve(async (req) => {
         }
 
         const orgId = Number(owner[0].org_id);
+        if (owner[0].user_id && params.MessageSid) {
+          await queueUsage("sms", params.MessageSid, params.AccountSid ?? "", orgId, String(owner[0].user_id));
+        }
         const { conversations } = await import("../_shared/activity.ts");
         const message = await conversations.receiveSms(orgId, from, body, params.MessageSid ?? null);
 
@@ -329,13 +450,18 @@ Deno.serve(async (req) => {
       // Twilio verified (or failed to verify) a caller ID the person is
       // binding as their own number. The org rides in the signed URL, same as
       // the recording callback.
+      case "callerid-proof": {
+        const { confirmPersonalNumberProof } = await import("../_shared/callerIdVerification.ts");
+        await confirmPersonalNumberProof({orgId:Number(url.searchParams.get("org")??0),
+          uid:url.searchParams.get("user")??'',key:url.searchParams.get("key")??'',
+          accountSid:params.AccountSid??'',phone:params.To??'',digits:params.Digits??''});
+        return xml("<Response><Hangup/></Response>");
+      }
       case "callerid": {
-        const orgId = Number(url.searchParams.get("org") ?? 0);
-        const phoneNumber = params.OutgoingCallerId ?? params.To ?? "";
-        if (orgId && phoneNumber && params.VerificationStatus === "success") {
-          const { numbers } = await import("../_shared/repository.ts");
-          await numbers.markVerified(orgId, phoneNumber);
-        }
+        const { confirmPersonalNumber } = await import("../_shared/callerIdVerification.ts");
+        await confirmPersonalNumber({orgId:Number(url.searchParams.get("org")??0),
+          uid:url.searchParams.get("user")??'',key:url.searchParams.get("key")??'',
+          accountSid:params.AccountSid??'',phone:params.OutgoingCallerId??params.To??'',status:params.VerificationStatus??''});
         return xml("<Response/>");
       }
 
@@ -369,13 +495,20 @@ Deno.serve(async (req) => {
         // same row either way.
         const sid = url.searchParams.get("call") || params.CallSid;
         const orgInUrl = Number(url.searchParams.get("org") ?? 0) || null;
-        const to = params.To ?? "";
         const from = params.From ?? "";
         // Dial* describes the leg that was dialled; on the action callback the
         // bare CallStatus is the parent's own state — "in-progress", which is
         // not an outcome — so the dial's view wins where it exists.
         const duration = Number(params.DialCallDuration ?? params.CallDuration ?? 0);
         const status = (params.DialCallStatus ?? params.CallStatus ?? "completed").toLowerCase();
+
+        const { recordPrepaidCallStatus } = await import("../_shared/prepaidCalls.ts");
+        await recordPrepaidCallStatus(sid, params.AccountSid??'', params.DialCallSid ?? params.CallSid ?? '');
+        const billedOwner = await sql`select org_id,user_id,from_number,to_number,direction from app_private.call_payments
+          where provider_sid=${sid} and provider_account_sid=${params.AccountSid??''}`;
+        // A softphone's parent leg reports To as a SIP URI; the billed row holds
+        // the E.164 number it was bridged to.
+        const to = billedOwner[0]?.direction === "outbound" ? String(billedOwner[0].to_number) : params.To ?? "";
 
         // Who this call belongs to.
         //
@@ -385,7 +518,7 @@ Deno.serve(async (req) => {
         // and logged nothing, and every outbound call stayed at the app's
         // optimistic row: in_progress, no duration, forever.
         const uid = from.startsWith("client:") ? from.slice("client:".length) : null;
-        const owner = uid
+        const owner = billedOwner.length ? billedOwner : uid
           ? await sql`
               select org_id, user_id from app_private.org_members
                where user_id = ${uid} limit 1
@@ -412,8 +545,8 @@ Deno.serve(async (req) => {
           // what belongs in the row. Without this the From column is empty for
           // every outbound call.
           const { numbers } = await import("../_shared/repository.ts");
-          const shown = uid ? await numbers.primaryFor(orgId) : from;
-          const direction = uid || !params.Direction?.startsWith("inbound") ? "outbound" : "inbound";
+          const shown = billedOwner[0]?.from_number ?? (uid ? await numbers.purchasedForUser(orgId, uid) : from);
+          const direction = billedOwner[0]?.direction ?? (uid || !params.Direction?.startsWith("inbound") ? "outbound" : "inbound");
           const other = direction === "inbound" ? from : to;
           const match = await contacts.findByPhone(orgId, other);
           const settled = ["completed", "busy", "failed", "no-answer", "canceled"].includes(status)

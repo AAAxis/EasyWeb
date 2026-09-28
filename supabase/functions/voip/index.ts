@@ -1,3 +1,6 @@
+import { startPersonalNumberVerification, personalNumberStatus } from '../_shared/callerIdVerification.ts';
+import { reviewNumberOrder } from "../_shared/numberApproval.ts";
+import { cancelNumberOrder } from "../_shared/numberPayments.ts";
 // The VoIP API — /functions/v1/voip/*
 //
 // Calls, the numbers they go out on, what was recorded, and SMS. Every route
@@ -21,7 +24,7 @@ import {
 } from "../_shared/http.ts";
 import { contacts, numbers, orgs } from "../_shared/repository.ts";
 import {
-  configureWebhooks, listOwned, numbersConfigured, purchase as purchaseNumber,
+  configureWebhooks, customerCatalog, listOwned, numbersConfigured, purchase as purchaseNumber,
   release as releaseNumber, searchAvailable, startCallerIdVerification,
 } from "../_shared/providers/numbers.ts";
 import {
@@ -34,9 +37,11 @@ import { calls, conversations, recordings } from "../_shared/activity.ts";
 import { playbackUrl, recordingConfigured, removeObject } from "../_shared/providers/recordings.ts";
 import { voiceProvider } from "../_shared/providers/voice.ts";
 import * as didlogic from "../_shared/providers/didlogic.ts";
+import * as didww from "../_shared/providers/didww.ts";
 import * as oxapay from "../_shared/providers/oxapay.ts";
 import { broadcast, broadcastToOrg } from "../_shared/realtime.ts";
 import { sql } from "../_shared/db.ts";
+import { listNumberRequests, numberRequestsConfigured, requestNumber } from "../_shared/numberRequests.ts";
 
 // An optional positive number off the query string — a cursor, a contact id.
 // Anything else reads as "not given" rather than as zero.
@@ -178,12 +183,8 @@ router.add("POST /voice/token", async ({ req }) => {
   const { ensurePushCredentials } = await import("../_shared/providers/twilioAccount.ts");
   await ensurePushCredentials(ctx.orgId).catch(() => {});
   const creds = await twilioCredsFor(ctx.orgId);
-  if (!creds?.own) {
-    throw new HttpError(
-      503,
-      "Connect your Twilio account in Settings → Phone number to enable calling.",
-      "NO_TWILIO_ACCOUNT",
-    );
+  if (!creds?.apiKeySid || !creds.apiKeySecret || !creds.twimlAppSid) {
+    throw new HttpError(503,"Calling is temporarily unavailable.","VOICE_NOT_CONFIGURED");
   }
   const body = await readJson<{ sandbox?: boolean }>(req).catch(() => ({}));
   return json(await provider.accessToken(actor.uid, creds, Boolean(body.sandbox)));
@@ -376,6 +377,10 @@ router.add("GET /providers/balance", async ({ req }) => {
   const ctx = await requireOrg(actor, req);
   const carrier = await carrierFor(ctx.orgId);
   if (!carrier) throw new HttpError(409, "No carrier connected", "NO_PROVIDER");
+  // The house account moved from DIDLogic to DIDWW. A workspace on the house
+  // carrier shows DIDWW's balance; one with its own DIDLogic key keeps its own.
+  const houseDidww = Deno.env.get("DIDWW_API_KEY") ?? "";
+  if (houseDidww && carrier.managed) return json({ provider: "didww", balance: await didww.balance(houseDidww) });
   if (carrier.provider !== "didlogic") return json({ balance: null, provider: carrier.provider });
   const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
   return json({ provider: carrier.provider, balance: await didlogic.balance(key) });
@@ -430,6 +435,50 @@ router.add("GET /providers/trunks", async ({ req }) => {
 // Numbers
 // ---------------------------------------------------------------------------
 
+
+// Consumer screens must never fall back to carrier-wide inventory, even when
+// the platform account is shared by many customers.
+router.add("GET /numbers/mine", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  const owned = await sql`
+    select id, user_id, phone_number, label, provider_sid, is_verified, is_primary
+      from app_private.phone_numbers
+     where org_id = ${ctx.orgId} and user_id = ${actor.uid}
+       and provider_sid is not null
+     order by is_primary desc, id desc
+  `;
+  const verifiedNumbers = await sql`select id,user_id,phone_number,is_verified,is_primary
+    from app_private.phone_numbers where org_id=${ctx.orgId} and user_id=${actor.uid}
+    and provider_sid is null and is_verified=true`;
+  return json({ numbers: owned, verified_numbers: verifiedNumbers, requests: await listNumberRequests(ctx) });
+});
+
+router.add("GET /numbers/catalog", async ({ req, query }) => {
+  const actor = await requireUser(req);
+  await requireOrg(actor, req);
+  const country = (query.get("country") ?? "US").toUpperCase();
+  return json({
+    numbers: await customerCatalog(country, query.get("contains") ?? undefined),
+    purchase_available: numberRequestsConfigured(),
+  });
+});
+
+router.add("POST /numbers/approval", async ({ req }) => {
+  return json(await reviewNumberOrder(await readJson(req)));
+});
+
+router.add("POST /numbers/requests/:id/cancel", async ({ req, params }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  return json(await cancelNumberOrder(ctx, params.id));
+});
+
+router.add("POST /numbers/buy", async ({ req }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor, req);
+  return json({ request: await requestNumber(ctx, await readJson(req)) }, 201);
+});
 
 router.add("GET /numbers/importable", async ({ req }) => {
   const actor = await requireUser(req);
@@ -535,20 +584,13 @@ router.add("POST /numbers/purchase", async ({ req }) => {
 router.add("POST /numbers/bind", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
-  requireAdmin(ctx);
-  const body = await readJson<{ phone_number?: string; label?: string }>(req);
-  if (!body.phone_number) throw new HttpError(400, "A phone number is required", "NUMBER_REQUIRED");
-  const bindCreds = await twilioCredsFor(ctx.orgId);
-  if (!bindCreds?.own) throw new HttpError(409, "Connect your Twilio account first.", "NO_TWILIO_ACCOUNT");
-  const started = await startCallerIdVerification(body.phone_number, ctx.orgId, bindCreds);
-  await numbers.add(ctx.orgId, {
-    user_id: actor.uid,
-    phone_number: started.phone_number,
-    label: body.label ?? null,
-    is_verified: false,
-  });
-  // Twilio is already calling them; the code is what the robot asks for.
-  return json({ validation_code: started.validation_code }, 201);
+  const body = await readJson<{phone_number?:string}>(req);
+  return json(await startPersonalNumberVerification({uid:actor.uid,orgId:ctx.orgId},String(body.phone_number??'')),201);
+});
+router.add("GET /numbers/verification", async ({ req,query }) => {
+  const actor = await requireUser(req);
+  const ctx = await requireOrg(actor,req);
+  return json(await personalNumberStatus({uid:actor.uid,orgId:ctx.orgId},query.get('phone_number')??''));
 });
 
 router.add("POST /numbers/:id/primary", async ({ req, params }) => {
@@ -561,14 +603,8 @@ router.add("POST /numbers/:id/primary", async ({ req, params }) => {
 router.add("DELETE /numbers/:id", async ({ req, params }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
-  requireAdmin(ctx);
-  const row = await numbers.remove(ctx.orgId, requireInt(params.id, "number id"));
-  // A purchased number goes back to Twilio; a bound caller ID just unlinks.
-  const removeCreds = await twilioCredsFor(ctx.orgId);
-  if (row.provider_sid && removeCreds?.own) {
-    await releaseNumber(String(row.provider_sid), removeCreds);
-  }
-  return json({ removed: true });
+  const { releaseOwnedNumber } = await import("../_shared/numberRelease.ts");
+  return json(await releaseOwnedNumber(ctx, requireInt(params.id, "number id")));
 });
 
 // --- Email ---------------------------------------------------------------

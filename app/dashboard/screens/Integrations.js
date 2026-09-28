@@ -175,7 +175,8 @@ export default function Integrations({ api, onError }) {
     ...(dialTwilio === null ? [] : [{ id: "twilio", name: "Twilio", balance: dialTwilio }]),
     ...(carrier ? [{
       id: "carrier",
-      name: carrier.provider === "didlogic" ? "DIDLogic" : (carrier.label ?? carrier.provider),
+      // The house carrier is DIDWW now; a workspace's own key keeps its name.
+      name: managed ? "DIDWW" : (CARRIERS[carrier]?.name ?? carrier),
       balance,
     }] : []),
   ];

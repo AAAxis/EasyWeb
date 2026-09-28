@@ -4,13 +4,14 @@
 // that reports itself, not an exception thrown from somewhere deep.
 import { env, has } from "../env.ts";
 
-export type OutboundSms = { to: string; from?: string; body: string };
+export type OutboundSms = { to: string; from?: string; body: string; statusCallback?: string };
 
 export type SmsResult = {
   provider: string;
   providerMessageId: string | null;
   status: "sent" | "queued" | "failed";
   error?: string;
+  definitiveFailure?: boolean;
 };
 
 export const smsConfigured = () =>
@@ -38,6 +39,7 @@ export async function sendSms(
       providerMessageId: null,
       status: "failed",
       error: "Texting isn't configured for this workspace yet.",
+      definitiveFailure: true,
     };
   }
 
@@ -45,11 +47,13 @@ export async function sendSms(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(12000),
       headers: {
         Authorization: authHeader,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ To: message.to, From: from, Body: message.body }),
+      body: new URLSearchParams({ To: message.to, From: from, Body: message.body,
+        ...(message.statusCallback ? { StatusCallback: message.statusCallback } : {}) }),
     },
   );
 
@@ -59,6 +63,7 @@ export async function sendSms(
       provider: "twilio",
       providerMessageId: null,
       status: "failed",
+      definitiveFailure: response.status >= 400 && response.status < 500 && response.status !== 408,
       error: (body as { message?: string }).message ?? `Twilio returned ${response.status}`,
     };
   }

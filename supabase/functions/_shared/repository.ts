@@ -137,6 +137,18 @@ export const numbers = {
     `;
   },
 
+  /** A purchased sender assigned to this user, never another workspace member. */
+  async purchasedForUser(orgId: number, userId: string): Promise<string | null> {
+    const rows = await sql`
+      select phone_number from app_private.phone_numbers
+       where org_id = ${orgId} and user_id = ${userId}
+         and is_verified = true and provider_sid is not null
+       order by is_primary desc, id desc
+       limit 1
+    `;
+    return rows.length > 0 ? String(rows[0].phone_number) : null;
+  },
+
   /** The number outbound calls should present for this workspace. */
   async primaryFor(orgId: number): Promise<string | null> {
     const rows = await sql`

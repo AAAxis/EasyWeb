@@ -12,11 +12,35 @@
 // state, and every Twilio error surfaces with Twilio's own message.
 import { env, has } from "../env.ts";
 import { HttpError } from "../http.ts";
+import { retailUsdCents } from "../retailPrice.ts";
 
 const BASE = "https://api.twilio.com/2010-04-01";
 
 export const numbersConfigured = () =>
   has("TWILIO_ACCOUNT_SID") && has("TWILIO_AUTH_TOKEN");
+
+/** Customer catalog: available platform inventory, never already-owned numbers. */
+export async function customerCatalog(country: string, contains?: string) {
+  if (!/^[A-Z]{2}$/.test(country)) {
+    throw new HttpError(400, "Choose a valid country.", "INVALID_COUNTRY");
+  }
+  const creds = resolve();
+  const response = await fetch(`https://pricing.twilio.com/v1/PhoneNumbers/Countries/${country}`, {
+    headers: auth(creds),
+  });
+  if (!response.ok) throw new HttpError(503, "Number prices are unavailable. Please try again.", "PRICE_UNAVAILABLE");
+  const pricing = await response.json() as {
+    price_unit?: string;
+    phone_number_prices?: Array<{ number_type: string; current_price: string }>;
+  };
+  const local = pricing.phone_number_prices?.find((price) => price.number_type === "local");
+  if (pricing.price_unit !== "USD" || !local) {
+    throw new HttpError(503, "USD number prices are unavailable for this country.", "PRICE_UNAVAILABLE");
+  }
+  const monthlyPrice = retailUsdCents(local.current_price);
+  const available = await searchAvailable(country, contains, creds);
+  return available.map((number) => ({ ...number, monthly_price_cents: monthlyPrice, currency: "USD" }));
+}
 
 // Which Twilio account to talk to: the workspace's own when passed, the
 // platform's otherwise. Every function here threads this through.
@@ -131,7 +155,7 @@ export async function release(providerSid: string, creds?: NumberCreds) {
   const resolved = resolve(creds);
   const response = await fetch(
     `${BASE}/Accounts/${resolved.accountSid}/IncomingPhoneNumbers/${providerSid}.json`,
-    { method: "DELETE", headers: auth(resolved) },
+    { method: "DELETE", headers: auth(resolved), signal: AbortSignal.timeout(10000) },
   );
   if (!response.ok && response.status !== 404) {
     throw new HttpError(400, "Twilio couldn't release the number.", "TWILIO_ERROR");
