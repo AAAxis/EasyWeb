@@ -176,7 +176,7 @@ export default function Integrations({ api, onError }) {
     ...(carrier ? [{
       id: "carrier",
       // The house carrier is DIDWW now; a workspace's own key keeps its name.
-      name: managed ? "DIDWW" : (CARRIERS[carrier]?.name ?? carrier),
+      name: managed ? "DIDWW" : (CARRIERS[carrier.provider]?.name ?? carrier.label ?? carrier.provider),
       balance,
     }] : []),
   ];

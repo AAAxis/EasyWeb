@@ -151,8 +151,13 @@ const recordAttributes = (policy: RecordingPolicy | null) =>
  * Shared by calls the app places and calls a registered softphone places, so
  * both get the same caller id, time limit, recording and callbacks.
  */
-async function bridgeOut(callSid: string, orgId: number, from: string, to: string, seconds: number) {
+async function bridgeOut(callSid: string, orgId: number, from: string, to: string, seconds: number, owner?: string) {
   const policy = await recordingPolicy(orgId);
+  // An unbilled call has no payment row for the status callback to read who
+  // placed it and where it went, so those ride in the signed query instead.
+  const query = `?call=${callSid}&org=${orgId}` + (owner
+    ? `&user=${encodeURIComponent(owner)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    : "");
 
   // The notice plays to the person being called, on their own leg, before
   // the two are bridged — so they hear it before anything is recorded.
@@ -171,12 +176,12 @@ async function bridgeOut(callSid: string, orgId: number, from: string, to: strin
   // part of what Twilio signs — so both callbacks name the same call and
   // the second to land updates the row instead of logging it twice.
   const report =
-    ` statusCallback="${esc(publicUrl("status", `?call=${callSid}&org=${orgId}`))}"` +
+    ` statusCallback="${esc(publicUrl("status", query))}"` +
     ` statusCallbackEvent="completed" statusCallbackMethod="POST"`;
 
   return xml(
     `<Response><Dial callerId="${esc(from)}" answerOnBridge="true" ` +
-      `timeLimit="${seconds}" timeout="30" action="${esc(publicUrl("status", `?call=${callSid}&org=${orgId}`))}" method="POST"${recordAttributes(policy)}>` +
+      `timeLimit="${seconds}" timeout="30" action="${esc(publicUrl("status", query))}" method="POST"${recordAttributes(policy)}>` +
       `<Number${announce}${report}>${esc(to)}</Number></Dial></Response>`,
   );
 }
@@ -197,6 +202,9 @@ const logRoute = (callSid: string, decision: string, fields: Record<string, unkn
  * Twilio has already checked the SIP credentials; the endpoint row is what
  * lets that username call as a user, and the caller id is re-checked against
  * Twilio because the carrier drops a call with a caller id it will not carry.
+ *
+ * Softphone calls are not charged to the app wallet: the operator pays the
+ * carrier directly. They are capped at SIP_MAX_CALL_SECONDS instead.
  */
 async function sipOutbound(params: Record<string, string>, endpoint: SipEndpoint, destination: string | null) {
   const sid = params.CallSid ?? "";
@@ -217,18 +225,9 @@ async function sipOutbound(params: Record<string, string>, endpoint: SipEndpoint
     return xml("<Response><Say>Your caller number is not verified for outgoing calls.</Say><Hangup/></Response>");
   }
 
-  const { authorizePrepaidCall } = await import("../_shared/prepaidCalls.ts");
-  let payment;
-  try {
-    payment = await authorizePrepaidCall({sid,accountSid:params.AccountSid??'',
-      orgId:endpoint.orgId,userId:endpoint.userId,from:endpoint.callerId,to:destination,direction:'outbound'});
-  } catch (error) {
-    logRoute(sid, "sip_outbound_rejected", { reason: (error as any)?.code ?? (error as any)?.message });
-    return xml('<Response><Hangup/></Response>');
-  }
-
-  logRoute(sid, "sip_outbound", { to: maskNumber(destination), callerId: maskNumber(endpoint.callerId), seconds: payment.seconds });
-  return await bridgeOut(sid, endpoint.orgId, endpoint.callerId, destination, payment.seconds);
+  const seconds = Number(env("SIP_MAX_CALL_SECONDS", "14400")) || 14400;
+  logRoute(sid, "sip_outbound", { to: maskNumber(destination), callerId: maskNumber(endpoint.callerId), seconds });
+  return await bridgeOut(sid, endpoint.orgId, endpoint.callerId, destination, seconds, endpoint.userId);
 }
 
 Deno.serve(async (req) => {
@@ -508,7 +507,12 @@ Deno.serve(async (req) => {
           where provider_sid=${sid} and provider_account_sid=${params.AccountSid??''}`;
         // A softphone's parent leg reports To as a SIP URI; the billed row holds
         // the E.164 number it was bridged to.
-        const to = billedOwner[0]?.direction === "outbound" ? String(billedOwner[0].to_number) : params.To ?? "";
+        // An unbilled softphone call names its number, caller id and user in the
+        // signed query for the same reason.
+        const unbilled = billedOwner.length ? null : url.searchParams.get("user")
+          ? { user: url.searchParams.get("user")!, from: url.searchParams.get("from") ?? "", to: url.searchParams.get("to") ?? "" }
+          : null;
+        const to = billedOwner[0]?.direction === "outbound" ? String(billedOwner[0].to_number) : unbilled?.to || (params.To ?? "");
 
         // Who this call belongs to.
         //
@@ -518,7 +522,9 @@ Deno.serve(async (req) => {
         // and logged nothing, and every outbound call stayed at the app's
         // optimistic row: in_progress, no duration, forever.
         const uid = from.startsWith("client:") ? from.slice("client:".length) : null;
-        const owner = billedOwner.length ? billedOwner : uid
+        const owner = billedOwner.length ? billedOwner : unbilled && orgInUrl
+          ? [{ org_id: orgInUrl, user_id: unbilled.user }]
+          : uid
           ? await sql`
               select org_id, user_id from app_private.org_members
                where user_id = ${uid} limit 1
@@ -545,8 +551,8 @@ Deno.serve(async (req) => {
           // what belongs in the row. Without this the From column is empty for
           // every outbound call.
           const { numbers } = await import("../_shared/repository.ts");
-          const shown = billedOwner[0]?.from_number ?? (uid ? await numbers.purchasedForUser(orgId, uid) : from);
-          const direction = billedOwner[0]?.direction ?? (uid || !params.Direction?.startsWith("inbound") ? "outbound" : "inbound");
+          const shown = billedOwner[0]?.from_number ?? unbilled?.from ?? (uid ? await numbers.purchasedForUser(orgId, uid) : from);
+          const direction = billedOwner[0]?.direction ?? (unbilled || uid || !params.Direction?.startsWith("inbound") ? "outbound" : "inbound");
           const other = direction === "inbound" ? from : to;
           const match = await contacts.findByPhone(orgId, other);
           const settled = ["completed", "busy", "failed", "no-answer", "canceled"].includes(status)
