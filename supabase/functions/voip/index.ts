@@ -434,7 +434,7 @@ router.add("GET /providers/trunks", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
   const carrier = await carrierFor(ctx.orgId);
-  if (carrier?.provider !== "didlogic") return json({ trunks: [] });
+  if (!carrier || !readsDidlogic(carrier)) return json({ trunks: [] });
   const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
   return json({ trunks: await didlogic.sipAccounts(key) });
 });
@@ -532,7 +532,7 @@ router.add("GET /numbers", async ({ req }) => {
   // The same question, whichever carrier is connected: what numbers do I have?
   // A caller should not have to know who sells them.
   const carrier = await carrierFor(ctx.orgId);
-  if (carrier?.provider === "didlogic") {
+  if (carrier && readsDidlogic(carrier)) {
     const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
     const held = await didlogic.numbers(key);
     return json({
