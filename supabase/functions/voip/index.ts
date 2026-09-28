@@ -87,6 +87,14 @@ async function carrierFor(orgId: number) {
   return { ...row, managed: false };
 }
 
+/**
+ * Whether DIDLogic's own records are the ones to read. The house account moved
+ * to DIDWW, so a workspace on the house carrier reads our tables instead; only
+ * a workspace with its own DIDLogic key still has DIDLogic history to show.
+ */
+const readsDidlogic = (carrier: Awaited<ReturnType<typeof carrierFor>>) =>
+  carrier?.provider === "didlogic" && !(carrier.managed && Deno.env.get("DIDWW_API_KEY"));
+
 /** `"dima" <6531061544>` — the label is theirs, the number is the part we want. */
 const bareNumber = (value: string) => {
   const match = /<([^>]+)>/.exec(value ?? "");
@@ -102,7 +110,7 @@ router.add("GET /calls", async ({ req, query }) => {
   // table only knows what the app told it before the call connected — which is
   // why every row in it says in_progress with no duration.
   const carrier = await carrierFor(ctx.orgId);
-  if (carrier?.provider === "didlogic") {
+  if (carrier && readsDidlogic(carrier)) {
     const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
     // Whose numbers these are has to come from the carrier too. Reading it from
     // our own phone_numbers table meant the set was empty for a DIDLogic
@@ -274,7 +282,7 @@ router.add("GET /providers/sms", async ({ req }) => {
   const actor = await requireUser(req);
   const ctx = await requireOrg(actor, req);
   const carrier = await carrierFor(ctx.orgId);
-  if (carrier?.provider !== "didlogic") return json({ messages: [] });
+  if (!carrier || !readsDidlogic(carrier)) return json({ messages: [] });
   const key = (carrier.credentials as { api_key?: string })?.api_key ?? "";
   const active = String(carrier.active_number ?? "").replace(/^\+/, "");
   const all = await didlogic.sms(key);
